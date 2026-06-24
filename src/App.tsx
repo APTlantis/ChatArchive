@@ -1,4 +1,6 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
+import mermaid from 'mermaid';
+import zenuml from '@mermaid-js/mermaid-zenuml';
 import '../prism/prism.js';
 import '../prism/prism.css';
 import {
@@ -45,6 +47,7 @@ const ARTIFACTS_URL = '/archive-data/artifacts.json';
 const VIEWER_STATE_KEY = 'chatArchive.viewerState.v1';
 const FIELD_SCOPES: SearchFieldScope[] = ['all', 'title', 'content', 'code', 'raw', 'assets', 'documents', 'links'];
 const Prism = globalThis.Prism;
+let mermaidReady: Promise<void> | null = null;
 const DEFAULT_FILTERS: SearchFilters = {
   query: '',
   fieldScope: 'all',
@@ -173,6 +176,31 @@ function highlightCode(code: string, language: string) {
   } catch {
     return { html: Prism.util.encode(code), language: 'text' };
   }
+}
+
+function getMermaidReady() {
+  if (!mermaidReady) {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'dark',
+      securityLevel: 'strict',
+      htmlLabels: false,
+      deterministicIds: false,
+      logLevel: 'error',
+    });
+    mermaidReady = mermaid.registerExternalDiagrams([zenuml]);
+  }
+  return mermaidReady;
+}
+
+function isMermaidLanguage(language: string) {
+  const normalized = String(language || '').trim().toLowerCase();
+  return normalized === 'mermaid' || normalized === 'mmd' || normalized === 'zenuml';
+}
+
+function prepareMermaidSource(text: string, language: string) {
+  if (String(language || '').trim().toLowerCase() !== 'zenuml') return text;
+  return /^\s*zenuml\b/.test(text) ? text : `zenuml\n${text}`;
 }
 
 function getConversationById(index: ArchiveIndex, id: string) {
@@ -501,6 +529,11 @@ function CopyButton({ value, label = 'Copy' }: { value: string; label?: string }
 }
 
 function CodeBlock({ block }: { block: Extract<MessageBlock, { type: 'code' }> }) {
+  if (isMermaidLanguage(block.language)) return <MermaidBlock block={block} />;
+  return <PrismCodeBlock block={block} />;
+}
+
+function PrismCodeBlock({ block }: { block: Extract<MessageBlock, { type: 'code' }> }) {
   const highlighted = useMemo(() => highlightCode(block.text, block.language), [block.language, block.text]);
 
   return (
@@ -518,6 +551,66 @@ function CodeBlock({ block }: { block: Extract<MessageBlock, { type: 'code' }> }
           dangerouslySetInnerHTML={{ __html: highlighted.html }}
         />
       </pre>
+    </section>
+  );
+}
+
+function MermaidBlock({ block }: { block: Extract<MessageBlock, { type: 'code' }> }) {
+  const reactId = useId();
+  const diagramId = useMemo(() => `archive-mermaid-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`, [reactId]);
+  const source = useMemo(() => prepareMermaidSource(block.text, block.language), [block.language, block.text]);
+  const fallback = useMemo(() => highlightCode(block.text, 'text'), [block.text]);
+  const [rendered, setRendered] = useState<{ svg: string; error: string; loading: boolean }>({
+    svg: '',
+    error: '',
+    loading: true,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    setRendered({ svg: '', error: '', loading: true });
+
+    getMermaidReady()
+      .then(() => mermaid.render(diagramId, source))
+      .then((result) => {
+        if (!cancelled) setRendered({ svg: result.svg, error: '', loading: false });
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          const error = err instanceof Error ? err.message : String(err);
+          setRendered({ svg: '', error, loading: false });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [diagramId, source]);
+
+  return (
+    <section className="code-card mermaid-card">
+      <div className="code-header">
+        <span>
+          <BarChart3 size={15} />
+          {block.language || 'mermaid'}
+        </span>
+        <CopyButton value={block.text} />
+      </div>
+      {rendered.loading ? <div className="mermaid-status">Rendering diagram...</div> : null}
+      {rendered.svg ? (
+        <div className="mermaid-output" dangerouslySetInnerHTML={{ __html: rendered.svg }} />
+      ) : null}
+      {!rendered.loading && rendered.error ? (
+        <div className="mermaid-fallback">
+          <div className="notice">Diagram could not be rendered. Showing source instead.</div>
+          <pre className={`language-${fallback.language}`}>
+            <code
+              className={`language-${fallback.language}`}
+              dangerouslySetInnerHTML={{ __html: fallback.html }}
+            />
+          </pre>
+        </div>
+      ) : null}
     </section>
   );
 }

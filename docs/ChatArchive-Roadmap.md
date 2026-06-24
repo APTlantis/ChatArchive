@@ -4,7 +4,7 @@
 
 **Goal:** Become the best local ChatGPT archive browser.
 
-**Status:** Complete. The app now opens to a dashboard, supports richer client-side search and filters, stores viewer navigation state in browser `localStorage` under `chatArchive.viewerState.v1`, generates a dedicated artifact index for code, assets, documents, and links, and highlights code blocks with locally bundled Prism.
+**Status:** Complete. The app now opens to a dashboard, supports richer client-side search and filters, stores viewer navigation state in browser `localStorage` under `chatArchive.viewerState.v1`, generates a dedicated artifact index for code, assets, documents, and links, highlights code blocks with locally bundled Prism, and renders Mermaid/ZenUML diagrams locally.
 
 ### Search Improvements
 
@@ -21,6 +21,7 @@ Current:
 * Conversation length filters
 * Dedicated artifact indexes for exact language, asset, document, and link search
 * Locally bundled Prism code highlighting
+* Locally bundled Mermaid and ZenUML diagram rendering with source fallback
 
 Remaining:
 

@@ -792,6 +792,46 @@ pre {
   text-decoration: none;
 }
 
+.mermaid-card {
+  background: #071013;
+}
+
+.mermaid-output {
+  overflow: auto;
+  padding: 18px;
+  background: #081216;
+}
+
+.mermaid-output svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.mermaid-output .node rect,
+.mermaid-output .node circle,
+.mermaid-output .node ellipse,
+.mermaid-output .node polygon,
+.mermaid-output .node path {
+  stroke-width: 1.5px;
+}
+
+.mermaid-status {
+  padding: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mermaid-fallback {
+  display: grid;
+  gap: 0;
+}
+
+.mermaid-fallback .notice {
+  margin: 12px;
+}
+
 .execution-card pre {
   color: #d8dedf;
 }

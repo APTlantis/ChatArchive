@@ -1,6 +1,6 @@
 # Chat Archive
 
-A local-first viewer for exported ChatGPT conversations. It turns an OpenAI data export into a fast, searchable, static archive with readable conversation threads, copied image assets, code blocks, raw-message visibility, and per-conversation Markdown export.
+A local-first viewer for exported ChatGPT conversations. It turns an OpenAI data export into a fast, searchable, static archive with readable conversation threads, copied image assets, highlighted code blocks, rendered Mermaid diagrams, raw-message visibility, and per-conversation Markdown export.
 
 This project started as a personal archive reader, but the shape is intentionally useful beyond one person's ChatGPT history: a provider export goes in, normalized conversation data comes out, and the UI reads that normalized archive without needing a backend.
 
@@ -17,6 +17,7 @@ This project started as a personal archive reader, but the shape is intentionall
 - Writes one JSON file per conversation in `public/archive-data/conversations`.
 - Provides a React reader with search, month grouping, conversation outline, image lightbox, code copy, all-code copy, raw-message toggle, and Markdown export.
 - Highlights code blocks with a locally bundled Prism build; no CDN or external runtime call is needed.
+- Renders Mermaid and ZenUML fenced diagrams from local npm packages, with source fallback when a diagram cannot be parsed.
 - Opens to a local dashboard with archive totals, first/latest chat dates, code block counts, unresolved asset counts, recently viewed conversations, favorites, pins, and read/unread totals.
 - Supports richer client-side search with phrases, regex mode, field chips, typed operators such as `type:code`, `language:python`, `type:document`, `type:link`, `domain:github.com`, date ranges, and conversation length filters.
 - Stores viewer-only state in browser `localStorage` under `chatArchive.viewerState.v1`, including favorites, pins, read markers, recently viewed conversations, message bookmarks, and last scroll position.
@@ -115,6 +116,7 @@ D:\Chat
 ├── prism/
 │   ├── prism.js                       # Locally bundled Prism languages/plugins
 │   └── prism.css                      # Prism Okaidia theme
+├── mermaid/                           # Downloaded Mermaid source snapshot/reference
 ├── public/
 │   ├── archive-data/
 │   │   ├── index.json                 # Search/list index and totals
@@ -147,7 +149,8 @@ This normalized layer is what makes future provider support realistic. Gemini, C
 - Asset recovery is best-effort. Some OpenAI pointers cannot be matched to local files, but unresolved pointers are recorded.
 - Audio and video payloads are skipped by the current asset extractor.
 - Search is client-side over generated indexes. Exact artifact search depends on a fresh `npm run ingest` so `artifacts.json` matches the current archive.
-- Prism is bundled as one full local language set, so the production JS chunk is intentionally larger than before.
+- Prism and Mermaid are bundled locally, so the production build is intentionally larger than a CDN-based version.
+- Mermaid diagram rendering is limited to fenced `mermaid`, `mmd`, and `zenuml` code blocks.
 - Favorites, pins, bookmarks, read markers, and scroll positions are browser-local state. They do not currently sync across browsers or export as a sidecar file.
 - There is no built-in privacy scrubber yet. Treat generated archive files as sensitive.
 - There is no database or server API. This is currently a static archive reader.
@@ -282,4 +285,4 @@ The UI is deliberately static. It fetches JSON from `/archive-data`, renders con
 
 ## Status
 
-Phase 1 archive viewer maturity is complete. The app is useful today for local OpenAI export browsing, dashboard review, Prism-highlighted code reading, richer search/filtering, exact artifact-backed operators, and browser-local navigation state, with a clear path toward Phase 2 explorer views.
+Phase 1 archive viewer maturity is complete. The app is useful today for local OpenAI export browsing, dashboard review, Prism-highlighted code reading, local Mermaid/ZenUML diagram rendering, richer search/filtering, exact artifact-backed operators, and browser-local navigation state, with a clear path toward Phase 2 explorer views.
