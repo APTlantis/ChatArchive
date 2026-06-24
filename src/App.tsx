@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import type {
   ArchiveAsset,
+  ArtifactIndex,
   ArchiveIndex,
   ArchiveMessage,
   ConversationFile,
@@ -38,8 +39,9 @@ import type {
 } from './types';
 
 const INDEX_URL = '/archive-data/index.json';
+const ARTIFACTS_URL = '/archive-data/artifacts.json';
 const VIEWER_STATE_KEY = 'chatArchive.viewerState.v1';
-const FIELD_SCOPES: SearchFieldScope[] = ['all', 'title', 'content', 'code', 'raw', 'assets'];
+const FIELD_SCOPES: SearchFieldScope[] = ['all', 'title', 'content', 'code', 'raw', 'assets', 'documents', 'links'];
 const DEFAULT_FILTERS: SearchFilters = {
   query: '',
   fieldScope: 'all',
@@ -110,11 +112,6 @@ function formatMonth(seconds: number | null) {
   return new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(new Date(seconds * 1000));
 }
 
-function formatInputDate(seconds: number | null) {
-  if (!seconds) return '';
-  return new Date(seconds * 1000).toISOString().slice(0, 10);
-}
-
 function roleLabel(role: string) {
   if (role === 'assistant') return 'Assistant';
   if (role === 'user') return 'You';
@@ -157,6 +154,83 @@ function useArchiveIndex() {
   return { index, error };
 }
 
+function useArtifactIndex() {
+  const [artifacts, setArtifacts] = useState<ArtifactIndex | null>(null);
+
+  useEffect(() => {
+    fetch(ARTIFACTS_URL)
+      .then((response) => {
+        if (!response.ok) return null;
+        return response.json();
+      })
+      .then(setArtifacts)
+      .catch(() => setArtifacts(null));
+  }, []);
+
+  return artifacts;
+}
+
+interface ArtifactSearchData {
+  codeText: Map<string, string>;
+  assetText: Map<string, string>;
+  documentText: Map<string, string>;
+  linkText: Map<string, string>;
+  allText: Map<string, string>;
+  types: Record<'code' | 'assets' | 'documents' | 'links', Set<string>>;
+  languages: Map<string, Set<string>>;
+  assetKinds: Map<string, Set<string>>;
+}
+
+function appendMapText(map: Map<string, string>, id: string, text: string) {
+  map.set(id, `${map.get(id) || ''}\n${text}`);
+}
+
+function buildArtifactSearchData(artifacts: ArtifactIndex | null): ArtifactSearchData | null {
+  if (!artifacts) return null;
+  const data: ArtifactSearchData = {
+    codeText: new Map(),
+    assetText: new Map(),
+    documentText: new Map(),
+    linkText: new Map(),
+    allText: new Map(),
+    types: {
+      code: new Set(),
+      assets: new Set(),
+      documents: new Set(),
+      links: new Set(),
+    },
+    languages: new Map(),
+    assetKinds: new Map(),
+  };
+
+  for (const item of artifacts.code) {
+    data.types.code.add(item.conversationId);
+    appendMapText(data.codeText, item.conversationId, item.searchText);
+    appendMapText(data.allText, item.conversationId, item.searchText);
+    if (!data.languages.has(item.language)) data.languages.set(item.language, new Set());
+    data.languages.get(item.language)!.add(item.conversationId);
+  }
+  for (const item of artifacts.assets) {
+    data.types.assets.add(item.conversationId);
+    appendMapText(data.assetText, item.conversationId, item.searchText);
+    appendMapText(data.allText, item.conversationId, item.searchText);
+    if (!data.assetKinds.has(item.kind)) data.assetKinds.set(item.kind, new Set());
+    data.assetKinds.get(item.kind)!.add(item.conversationId);
+  }
+  for (const item of artifacts.documents) {
+    data.types.documents.add(item.conversationId);
+    appendMapText(data.documentText, item.conversationId, item.searchText);
+    appendMapText(data.allText, item.conversationId, item.searchText);
+  }
+  for (const item of artifacts.links) {
+    data.types.links.add(item.conversationId);
+    appendMapText(data.linkText, item.conversationId, item.searchText);
+    appendMapText(data.allText, item.conversationId, item.searchText);
+  }
+
+  return data;
+}
+
 function groupConversations(conversations: ConversationSummary[]) {
   const groups = new Map<string, ConversationSummary[]>();
   for (const conversation of conversations) {
@@ -193,48 +267,72 @@ function textMatches(text: string, term: string, phrase: boolean) {
   return needle.split(/\s+/).every((part) => source.includes(part));
 }
 
-function matchesField(conversation: ConversationSummary, field: SearchFieldScope, term: string, phrase: boolean) {
+function getArtifactFieldText(conversationId: string, field: SearchFieldScope, artifacts: ArtifactSearchData | null) {
+  if (!artifacts) return '';
+  if (field === 'code') return artifacts.codeText.get(conversationId) || '';
+  if (field === 'assets') return artifacts.assetText.get(conversationId) || '';
+  if (field === 'documents') return artifacts.documentText.get(conversationId) || '';
+  if (field === 'links') return artifacts.linkText.get(conversationId) || '';
+  return artifacts.allText.get(conversationId) || '';
+}
+
+function matchesField(
+  conversation: ConversationSummary,
+  field: SearchFieldScope,
+  term: string,
+  phrase: boolean,
+  artifacts: ArtifactSearchData | null,
+) {
   const title = conversation.title || '';
   const content = conversation.searchText || '';
   const assetText = `${conversation.assetCount} assets ${conversation.externalAssetCount} external`;
 
   if (field === 'title') return textMatches(title, term, phrase);
   if (field === 'content') return textMatches(content, term, phrase);
-  if (field === 'code') return conversation.codeBlockCount > 0 && textMatches(content, term, phrase);
+  if (field === 'code') return conversation.codeBlockCount > 0 && textMatches(getArtifactFieldText(conversation.id, field, artifacts) || content, term, phrase);
   if (field === 'raw') return conversation.hiddenMessageCount > 0 && textMatches(content, term, phrase);
-  if (field === 'assets') return conversation.assetCount > 0 && textMatches(assetText, term, phrase);
-  return textMatches(`${title}\n${content}`, term, phrase);
+  if (field === 'assets') return conversation.assetCount > 0 && textMatches(getArtifactFieldText(conversation.id, field, artifacts) || assetText, term, phrase);
+  if (field === 'documents') return textMatches(getArtifactFieldText(conversation.id, field, artifacts), term, phrase);
+  if (field === 'links') return textMatches(getArtifactFieldText(conversation.id, field, artifacts), term, phrase);
+  return textMatches(`${title}\n${content}\n${getArtifactFieldText(conversation.id, 'all', artifacts)}`, term, phrase);
 }
 
-function matchesOperator(conversation: ConversationSummary, token: string) {
+function matchesOperator(conversation: ConversationSummary, token: string, artifacts: ArtifactSearchData | null) {
   const [rawKey, ...rest] = token.split(':');
   const key = rawKey.toLowerCase();
   const value = rest.join(':').trim();
-  if (!value) return matchesField(conversation, 'all', token, false);
+  const normalizedValue = value.toLowerCase();
+  if (!value) return matchesField(conversation, 'all', token, false, artifacts);
 
-  if (key === 'title') return matchesField(conversation, 'title', value, false);
-  if (key === 'content') return matchesField(conversation, 'content', value, false);
+  if (key === 'title') return matchesField(conversation, 'title', value, false, artifacts);
+  if (key === 'content') return matchesField(conversation, 'content', value, false, artifacts);
   if (key === 'type') {
-    if (value.toLowerCase() === 'code') return conversation.codeBlockCount > 0;
-    if (value.toLowerCase() === 'raw') return conversation.hiddenMessageCount > 0;
-    if (value.toLowerCase() === 'asset') return conversation.assetCount > 0;
+    if (normalizedValue === 'code') return artifacts?.types.code.has(conversation.id) ?? conversation.codeBlockCount > 0;
+    if (normalizedValue === 'raw') return conversation.hiddenMessageCount > 0;
+    if (normalizedValue === 'asset' || normalizedValue === 'assets') return artifacts?.types.assets.has(conversation.id) ?? conversation.assetCount > 0;
+    if (normalizedValue === 'document' || normalizedValue === 'documents') return artifacts?.types.documents.has(conversation.id) ?? false;
+    if (normalizedValue === 'link' || normalizedValue === 'links') return artifacts?.types.links.has(conversation.id) ?? false;
   }
   if (key === 'language') {
-    return conversation.codeBlockCount > 0 && textMatches(conversation.searchText, value, false);
+    return artifacts?.languages.get(normalizedValue)?.has(conversation.id) ?? false;
   }
-  if (key === 'raw') return value.toLowerCase() === 'true' ? conversation.hiddenMessageCount > 0 : true;
-  if (key === 'asset') return value.toLowerCase() === 'true' ? conversation.assetCount > 0 : true;
-  if (key === 'external') return value.toLowerCase() === 'true' ? conversation.externalAssetCount > 0 : true;
+  if (key === 'raw') return normalizedValue === 'true' ? conversation.hiddenMessageCount > 0 : true;
+  if (key === 'asset') return normalizedValue === 'true' ? artifacts?.types.assets.has(conversation.id) ?? conversation.assetCount > 0 : true;
+  if (key === 'external') return normalizedValue === 'true' ? artifacts?.assetKinds.get('external')?.has(conversation.id) ?? conversation.externalAssetCount > 0 : true;
   if (key === 'missing') {
-    return value.toLowerCase() === 'true' ? conversation.assetCount > conversation.externalAssetCount : true;
+    return normalizedValue === 'true' ? artifacts?.assetKinds.get('missing')?.has(conversation.id) ?? false : true;
   }
-  return matchesField(conversation, 'all', token, false);
+  if (key === 'domain') return textMatches(getArtifactFieldText(conversation.id, 'links', artifacts), value, false);
+  if (key === 'doc' || key === 'document') return textMatches(getArtifactFieldText(conversation.id, 'documents', artifacts), value, false);
+  if (key === 'link') return textMatches(getArtifactFieldText(conversation.id, 'links', artifacts), value, false);
+  return matchesField(conversation, 'all', token, false, artifacts);
 }
 
 function filterConversations(
   conversations: ConversationSummary[],
   filters: SearchFilters,
   pinned: Record<string, unknown>,
+  artifacts: ArtifactSearchData | null,
 ) {
   const start = filters.startDate ? new Date(`${filters.startDate}T00:00:00`).getTime() / 1000 : null;
   const end = filters.endDate ? new Date(`${filters.endDate}T23:59:59`).getTime() / 1000 : null;
@@ -252,12 +350,12 @@ function filterConversations(
 
     if (regexResult?.error) return true;
     if (regexResult?.regex) {
-      return regexResult.regex.test(`${conversation.title}\n${conversation.searchText}`);
+      return regexResult.regex.test(`${conversation.title}\n${conversation.searchText}\n${getArtifactFieldText(conversation.id, filters.fieldScope, artifacts)}`);
     }
 
     return tokens.every((token) => {
-      if (!token.phrase && token.value.includes(':')) return matchesOperator(conversation, token.value);
-      return matchesField(conversation, filters.fieldScope, token.value, token.phrase);
+      if (!token.phrase && token.value.includes(':')) return matchesOperator(conversation, token.value, artifacts);
+      return matchesField(conversation, filters.fieldScope, token.value, token.phrase, artifacts);
     });
   });
 
@@ -667,10 +765,12 @@ function Sidebar({
 
 function Dashboard({
   index,
+  artifacts,
   viewerState,
   onSelect,
 }: {
   index: ArchiveIndex;
+  artifacts: ArtifactIndex | null;
   viewerState: ViewerState;
   onSelect: (conversation: ConversationSummary) => void;
 }) {
@@ -724,6 +824,7 @@ function Dashboard({
       <DashboardList title="Recently viewed" icon={<CalendarDays size={16} />} conversations={recentlyViewed} onSelect={onSelect} />
       <DashboardList title="Pinned" icon={<Pin size={16} />} conversations={pinned} onSelect={onSelect} />
       <DashboardList title="Favorites" icon={<Star size={16} />} conversations={favorites} onSelect={onSelect} />
+      <ArtifactDashboard artifacts={artifacts} />
     </section>
   );
 }
@@ -765,6 +866,43 @@ function DashboardList({
         </div>
       ) : (
         <p className="empty-note">Nothing here yet.</p>
+      )}
+    </section>
+  );
+}
+
+function ArtifactDashboard({ artifacts }: { artifacts: ArtifactIndex | null }) {
+  const topLanguages = artifacts
+    ? Object.entries(artifacts.languageCounts)
+        .slice(0, 10)
+        .map(([language, count]) => ({ language, count }))
+    : [];
+
+  return (
+    <section className="dashboard-section">
+      <h3>
+        <Archive size={16} />
+        Artifact indexes
+      </h3>
+      {artifacts ? (
+        <>
+          <div className="artifact-stat-grid">
+            <Stat label="Code" value={artifacts.totals.code.toLocaleString()} />
+            <Stat label="Assets" value={artifacts.totals.assets.toLocaleString()} />
+            <Stat label="Documents" value={artifacts.totals.documents.toLocaleString()} />
+            <Stat label="Links" value={artifacts.totals.links.toLocaleString()} />
+          </div>
+          <div className="language-row">
+            {topLanguages.map((item) => (
+              <span key={item.language}>
+                <Code2 size={12} />
+                {item.language} {item.count.toLocaleString()}
+              </span>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="empty-note">Run `npm run ingest` to generate the dedicated artifact index.</p>
       )}
     </section>
   );
@@ -937,6 +1075,7 @@ function Lightbox({ asset, onClose }: { asset: ArchiveAsset | null; onClose: () 
 
 export default function App() {
   const { index, error } = useArchiveIndex();
+  const artifacts = useArtifactIndex();
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
   const [viewerState, setViewerState] = useState<ViewerState>(() => readViewerState());
   const [selected, setSelected] = useState<ConversationSummary | null>(null);
@@ -988,10 +1127,12 @@ export default function App() {
       });
   }, [selected]);
 
+  const artifactSearchData = useMemo(() => buildArtifactSearchData(artifacts), [artifacts]);
+
   const filtered = useMemo(() => {
     if (!index) return { conversations: [], regexError: '' };
-    return filterConversations(index.conversations, filters, viewerState.pinned);
-  }, [filters, index, viewerState.pinned]);
+    return filterConversations(index.conversations, filters, viewerState.pinned, artifactSearchData);
+  }, [artifactSearchData, filters, index, viewerState.pinned]);
 
   const messages = useMemo(() => getVisibleMessages(conversation, showHidden), [conversation, showHidden]);
   const displayedMessages = useMemo(() => filterMessagesForAssetSearch(messages, filters), [filters, messages]);
@@ -1159,7 +1300,7 @@ export default function App() {
             <div className="conversation-loading">Loading conversation...</div>
           )
         ) : (
-          <Dashboard index={index} viewerState={viewerState} onSelect={openConversation} />
+          <Dashboard index={index} artifacts={artifacts} viewerState={viewerState} onSelect={openConversation} />
         )}
       </main>
       <RightRail index={index} messages={displayedMessages} bookmarks={allBookmarks} onSelectBookmark={selectBookmark} />

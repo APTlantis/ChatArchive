@@ -73,7 +73,7 @@ export interface ArchiveReference {
   url?: string;
 }
 
-export type SearchFieldScope = 'all' | 'title' | 'content' | 'code' | 'raw' | 'assets';
+export type SearchFieldScope = 'all' | 'title' | 'content' | 'code' | 'raw' | 'assets' | 'documents' | 'links';
 
 export interface SearchFilters {
   query: string;
@@ -110,4 +110,61 @@ export interface ViewerState {
   recentlyViewed: ViewedConversation[];
   messageBookmarks: Record<string, MessageBookmark[]>;
   scrollPositions: Record<string, number>;
+}
+
+export interface ArtifactIndex {
+  generatedAt: string;
+  sourcePath: string;
+  totals: {
+    code: number;
+    assets: number;
+    documents: number;
+    links: number;
+  };
+  languageCounts: Record<string, number>;
+  code: CodeArtifact[];
+  assets: AssetArtifact[];
+  documents: DocumentArtifact[];
+  links: LinkArtifact[];
+}
+
+export interface BaseArtifact {
+  id: string;
+  conversationId: string;
+  conversationTitle: string;
+  messageId: string;
+  createTime: number | null;
+  role: Role;
+  searchText: string;
+}
+
+export interface CodeArtifact extends BaseArtifact {
+  type: 'code';
+  language: string;
+  preview: string;
+  text: string;
+}
+
+export interface AssetArtifact extends BaseArtifact {
+  type: 'asset';
+  kind: 'local' | 'external' | 'missing';
+  label: string;
+  original: string;
+  url: string;
+  width?: number;
+  height?: number;
+}
+
+export interface DocumentArtifact extends BaseArtifact {
+  type: 'document';
+  documentType: string;
+  title: string;
+  preview: string;
+}
+
+export interface LinkArtifact extends BaseArtifact {
+  type: 'link';
+  label: string;
+  url: string;
+  domain: string;
 }

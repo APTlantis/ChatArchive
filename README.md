@@ -13,10 +13,11 @@ This project started as a personal archive reader, but the shape is intentionall
 - Copies matching local image assets into `public/archive-assets`.
 - Tracks unresolved asset pointers and external image URLs in `public/archive-data/assets-manifest.json`.
 - Builds a static archive index in `public/archive-data/index.json`.
+- Builds a dedicated artifact index in `public/archive-data/artifacts.json` for code, assets, document-like Markdown, and links.
 - Writes one JSON file per conversation in `public/archive-data/conversations`.
 - Provides a React reader with search, month grouping, conversation outline, image lightbox, code copy, all-code copy, raw-message toggle, and Markdown export.
 - Opens to a local dashboard with archive totals, first/latest chat dates, code block counts, unresolved asset counts, recently viewed conversations, favorites, pins, and read/unread totals.
-- Supports richer client-side search with phrases, regex mode, field chips, typed operators such as `type:code`, date ranges, and conversation length filters.
+- Supports richer client-side search with phrases, regex mode, field chips, typed operators such as `type:code`, `language:python`, `type:document`, `type:link`, `domain:github.com`, date ranges, and conversation length filters.
 - Stores viewer-only state in browser `localStorage` under `chatArchive.viewerState.v1`, including favorites, pins, read markers, recently viewed conversations, message bookmarks, and last scroll position.
 
 The current local archive build contains 448 conversations, 26,374 visible messages, 9,584 hidden/raw messages, and 2,282 copied local assets. Those numbers come from the generated data currently in this working tree and will change whenever a different export is ingested.
@@ -113,6 +114,7 @@ D:\Chat
 ├── public/
 │   ├── archive-data/
 │   │   ├── index.json                 # Search/list index and totals
+│   │   ├── artifacts.json             # Code, asset, document, and link index
 │   │   ├── assets-manifest.json       # Copied, external, and missing asset records
 │   │   └── conversations/             # One normalized JSON file per conversation
 │   └── archive-assets/                # Copied local image assets
@@ -130,6 +132,7 @@ The app reads a small normalized model instead of rendering the raw provider exp
 - `ArchiveMessage` stores role, author, time, content type, extracted blocks, assets, references, hidden/raw status, and original content type.
 - `MessageBlock` supports Markdown, code, execution output, and notices.
 - `ArchiveAsset` tracks local, external, and missing assets.
+- `ArtifactIndex` powers exact language, code, asset, document, and link search without loading every conversation file.
 
 This normalized layer is what makes future provider support realistic. Gemini, Claude, Ollama, Jan, or other sources do not need to match OpenAI's export format; they only need adapters that produce the same archive model.
 
@@ -139,7 +142,7 @@ This normalized layer is what makes future provider support realistic. Gemini, C
 - Markdown rendering is intentionally lightweight and does not cover every Markdown extension.
 - Asset recovery is best-effort. Some OpenAI pointers cannot be matched to local files, but unresolved pointers are recorded.
 - Audio and video payloads are skipped by the current asset extractor.
-- Search is client-side over the generated index. It supports useful field filters and operators, but global asset/language precision still needs a dedicated artifact index.
+- Search is client-side over generated indexes. Exact artifact search depends on a fresh `npm run ingest` so `artifacts.json` matches the current archive.
 - Favorites, pins, bookmarks, read markers, and scroll positions are browser-local state. They do not currently sync across browsers or export as a sidecar file.
 - There is no built-in privacy scrubber yet. Treat generated archive files as sensitive.
 - There is no database or server API. This is currently a static archive reader.
@@ -194,9 +197,9 @@ Local models may not handle giant conversation histories in one pass, so this li
 
 ### 3. Better Search And Retrieval
 
-Phase 1 added the first mature search pass: phrases, regex mode, field chips, typed operators, date ranges, conversation length filters, and browser-local navigation state. The remaining work is deeper retrieval rather than basic viewer search.
+Phase 1 added the first mature search pass: phrases, regex mode, field chips, typed operators, date ranges, conversation length filters, browser-local navigation state, and a dedicated artifact index for code, assets, documents, and links. The remaining work is deeper retrieval rather than basic viewer search.
 
-- Full-text index with field weighting for title, user messages, assistant messages, code, assets, and references.
+- Full-text index with field weighting for title, user messages, assistant messages, code, assets, documents, and links.
 - Conversation tags and manual notes.
 - Saved searches.
 - Semantic search using local embeddings.
@@ -270,8 +273,8 @@ The UI is deliberately static. It fetches JSON from `/archive-data`, renders con
 3. Add a privacy scrubber before broader sharing.
 4. Add provider-neutral import documentation.
 5. Add a local-model handoff exporter for one selected conversation.
-6. Add a dedicated artifact index for precise code, language, asset, document, and link discovery.
+6. Add Code Explorer, Document Explorer, Asset Explorer, and Link Explorer views on top of the artifact index.
 
 ## Status
 
-Phase 1 archive viewer maturity is implemented. The app is useful today for local OpenAI export browsing, dashboard review, richer search/filtering, and browser-local navigation state, with a clear path toward artifact extraction, provider-neutral archives, and local-model continuation.
+Phase 1 archive viewer maturity is implemented, including the first dedicated artifact index. The app is useful today for local OpenAI export browsing, dashboard review, richer search/filtering, exact artifact-backed operators, and browser-local navigation state, with a clear path toward explorer views, provider-neutral archives, and local-model continuation.

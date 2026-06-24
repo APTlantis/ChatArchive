@@ -9,9 +9,11 @@ const OUT_DIR = path.join(ROOT, 'public', 'archive-data');
 const CONV_DIR = path.join(OUT_DIR, 'conversations');
 const ASSET_DIR = path.join(ROOT, 'public', 'archive-assets');
 const ASSET_URL_BASE = '/archive-assets/';
+const ARTIFACTS_JSON = path.join(OUT_DIR, 'artifacts.json');
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.avif']);
 const MAX_SEARCH_TEXT = 24000;
+const MAX_ARTIFACT_TEXT = 12000;
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -246,6 +248,141 @@ function extractReferences(message) {
   return refs;
 }
 
+function extractTextUrls(text) {
+  const urls = [];
+  const seen = new Set();
+  for (const match of String(text || '').matchAll(/https?:\/\/[^\s<>"')\]]+/g)) {
+    const url = match[0].replace(/[.,;:!?]+$/g, '');
+    if (seen.has(url)) continue;
+    seen.add(url);
+    urls.push(url);
+  }
+  return urls;
+}
+
+function domainFromUrl(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function artifactText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, MAX_ARTIFACT_TEXT);
+}
+
+function classifyDocument(text, conversationTitle) {
+  const sample = `${conversationTitle}\n${text}`.toLowerCase();
+  if (/\breadme\b|#\s+readme/.test(sample)) return 'README';
+  if (/release\s+notes?|changelog|version\s+notes?/.test(sample)) return 'Release notes';
+  if (/specification|requirements?|acceptance criteria|success criteria/.test(sample)) return 'Specification';
+  if (/architecture|data flow|system design|design doc/.test(sample)) return 'Architecture';
+  if (/standard|policy|procedure|runbook|operating model/.test(sample)) return 'Standard';
+  if (/roadmap|milestone|phase\s+\d+/.test(sample)) return 'Roadmap';
+  return 'Document';
+}
+
+function looksDocumentLike(block, conversationTitle) {
+  if (block.type !== 'markdown') return false;
+  const text = block.text || '';
+  if (text.length >= 900) return true;
+  const sample = `${conversationTitle}\n${text}`.toLowerCase();
+  return /\breadme\b|release\s+notes?|specification|architecture|standard|runbook|roadmap|requirements?|acceptance criteria/.test(sample);
+}
+
+function buildConversationArtifacts(summary, messages) {
+  const artifacts = {
+    code: [],
+    assets: [],
+    documents: [],
+    links: [],
+  };
+  const seenLinks = new Set();
+
+  for (const message of messages.filter((item) => !item.hidden)) {
+    message.blocks.forEach((block, blockIndex) => {
+      if (block.type === 'code') {
+        const language = artifactText(block.language || 'text').toLowerCase() || 'text';
+        artifacts.code.push({
+          id: stableId(`code:${summary.id}:${message.id}:${blockIndex}`),
+          type: 'code',
+          conversationId: summary.id,
+          conversationTitle: summary.title,
+          messageId: message.id,
+          createTime: message.createTime,
+          role: message.role,
+          language,
+          preview: artifactText(block.text).slice(0, 260),
+          text: block.text,
+          searchText: artifactText(`${summary.title}\n${language}\n${block.text}`),
+        });
+      } else if (looksDocumentLike(block, summary.title)) {
+        const title = block.text.match(/^#{1,4}\s+(.+)$/m)?.[1]?.trim() || summary.title;
+        const documentType = classifyDocument(block.text, summary.title);
+        artifacts.documents.push({
+          id: stableId(`document:${summary.id}:${message.id}:${blockIndex}`),
+          type: 'document',
+          conversationId: summary.id,
+          conversationTitle: summary.title,
+          messageId: message.id,
+          createTime: message.createTime,
+          role: message.role,
+          documentType,
+          title,
+          preview: artifactText(block.text).slice(0, 360),
+          searchText: artifactText(`${summary.title}\n${documentType}\n${title}\n${block.text}`),
+        });
+      }
+    });
+
+    message.assets.forEach((asset, assetIndex) => {
+      artifacts.assets.push({
+        id: stableId(`asset:${summary.id}:${message.id}:${asset.id}:${assetIndex}`),
+        type: 'asset',
+        conversationId: summary.id,
+        conversationTitle: summary.title,
+        messageId: message.id,
+        createTime: message.createTime,
+        role: message.role,
+        kind: asset.kind,
+        label: asset.label,
+        original: asset.original,
+        url: asset.url,
+        width: asset.width,
+        height: asset.height,
+        searchText: artifactText(`${summary.title}\n${asset.kind}\n${asset.label}\n${asset.original}\n${asset.url}`),
+      });
+    });
+
+    const links = [
+      ...message.references.filter((ref) => ref.url).map((ref) => ({ label: ref.label, url: ref.url })),
+      ...extractTextUrls(message.text).map((url) => ({ label: url, url })),
+    ];
+    links.forEach((link, linkIndex) => {
+      const key = `${summary.id}:${message.id}:${link.url}`;
+      if (seenLinks.has(key)) return;
+      seenLinks.add(key);
+      const domain = domainFromUrl(link.url);
+      artifacts.links.push({
+        id: stableId(`link:${key}:${linkIndex}`),
+        type: 'link',
+        conversationId: summary.id,
+        conversationTitle: summary.title,
+        messageId: message.id,
+        createTime: message.createTime,
+        role: message.role,
+        label: artifactText(link.label || link.url).slice(0, 260),
+        url: link.url,
+        domain,
+        searchText: artifactText(`${summary.title}\n${domain}\n${link.label || ''}\n${link.url}`),
+      });
+    });
+  }
+
+  return artifacts;
+}
+
 function extractAssets(message, assetIndex, copied, manifest) {
   const assets = [];
   const seen = new Set();
@@ -465,6 +602,12 @@ function main() {
   };
 
   const summaries = [];
+  const artifactIndex = {
+    code: [],
+    assets: [],
+    documents: [],
+    links: [],
+  };
   let visibleMessages = 0;
   let hiddenMessages = 0;
   let missingAssets = 0;
@@ -489,6 +632,12 @@ function main() {
       messages,
     });
     summaries.push(summary);
+
+    const artifacts = buildConversationArtifacts(summary, messages);
+    artifactIndex.code.push(...artifacts.code);
+    artifactIndex.assets.push(...artifacts.assets);
+    artifactIndex.documents.push(...artifacts.documents);
+    artifactIndex.links.push(...artifacts.links);
   });
 
   summaries.sort((a, b) => (b.updateTime || b.createTime || 0) - (a.updateTime || a.createTime || 0));
@@ -508,6 +657,26 @@ function main() {
     conversations: summaries,
   });
 
+  const languageCounts = {};
+  for (const artifact of artifactIndex.code) {
+    languageCounts[artifact.language] = (languageCounts[artifact.language] || 0) + 1;
+  }
+  writeJson(ARTIFACTS_JSON, {
+    generatedAt: new Date().toISOString(),
+    sourcePath: SOURCE_DIR,
+    totals: {
+      code: artifactIndex.code.length,
+      assets: artifactIndex.assets.length,
+      documents: artifactIndex.documents.length,
+      links: artifactIndex.links.length,
+    },
+    languageCounts: Object.fromEntries(Object.entries(languageCounts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))),
+    code: artifactIndex.code,
+    assets: artifactIndex.assets,
+    documents: artifactIndex.documents,
+    links: artifactIndex.links,
+  });
+
   manifest.copiedAssets = [...copied].sort().map((file) => ({
     source: path.relative(SOURCE_DIR, file),
     url: ASSET_URL_BASE + encodeURIComponent(path.basename(file)),
@@ -523,6 +692,10 @@ function main() {
   console.log(`Copied local assets: ${copied.size}`);
   console.log(`External image URLs: ${externalAssets}`);
   console.log(`Missing local pointers: ${missingAssets}`);
+  console.log(`Indexed code artifacts: ${artifactIndex.code.length}`);
+  console.log(`Indexed asset artifacts: ${artifactIndex.assets.length}`);
+  console.log(`Indexed document artifacts: ${artifactIndex.documents.length}`);
+  console.log(`Indexed link artifacts: ${artifactIndex.links.length}`);
 }
 
 main();

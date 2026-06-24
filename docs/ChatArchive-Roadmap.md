@@ -4,7 +4,7 @@
 
 **Goal:** Become the best local ChatGPT archive browser.
 
-**Status:** Implemented as the first viewer-maturity pass. The app now opens to a dashboard, supports richer client-side search and filters, and stores viewer navigation state in browser `localStorage` under `chatArchive.viewerState.v1`.
+**Status:** Implemented as the first viewer-maturity pass. The app now opens to a dashboard, supports richer client-side search and filters, stores viewer navigation state in browser `localStorage` under `chatArchive.viewerState.v1`, and generates a dedicated artifact index for code, assets, documents, and links.
 
 ### Search Improvements
 
@@ -15,15 +15,17 @@ Current:
 * Phrase search
 * Regex search toggle
 * Search field chips for all, title, content, code, raw, and assets
-* Typed operators including `title:`, `content:`, `type:code`, `language:`, `raw:true`, `asset:true`, `missing:true`, and `external:true`
+* Artifact-backed search field chips for code, assets, documents, and links
+* Typed operators including `title:`, `content:`, `type:code`, `type:document`, `type:link`, `language:`, `domain:`, `raw:true`, `asset:true`, `missing:true`, and `external:true`
 * Date range filters
 * Conversation length filters
+* Dedicated artifact indexes for exact language, asset, document, and link search
 
 Remaining:
 
-* Dedicated artifact indexes for exact language, asset, document, and link search
 * Saved searches
 * Semantic search
+* Explorer views for code, documents, assets, and links
 
 Example:
 

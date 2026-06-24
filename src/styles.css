@@ -516,6 +516,41 @@ a:hover {
   gap: 6px;
 }
 
+.artifact-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.artifact-stat-grid .stat {
+  min-height: 72px;
+}
+
+.artifact-stat-grid .stat strong {
+  font-size: 18px;
+}
+
+.language-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.language-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0b0f12;
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 720;
+}
+
 .dashboard-list button,
 .bookmark-row {
   display: grid;
@@ -1007,7 +1042,8 @@ pre::-webkit-scrollbar-thumb:hover {
 }
 
 @media (max-width: 980px) {
-  .stat-grid {
+  .stat-grid,
+  .artifact-stat-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1071,7 +1107,8 @@ pre::-webkit-scrollbar-thumb:hover {
     width: calc(100% - 24px);
   }
 
-  .stat-grid {
+  .stat-grid,
+  .artifact-stat-grid {
     grid-template-columns: 1fr;
   }
 }
