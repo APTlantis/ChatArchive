@@ -1,0 +1,5 @@
+/dist/
+/node_modules/
+/openai-history/
+/public/archive-assets/
+/public/archive-data/
