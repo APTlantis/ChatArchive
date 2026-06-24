@@ -768,6 +768,30 @@ pre {
   line-height: 1.55;
 }
 
+.code-card pre[class*="language-"],
+.execution-card pre[class*="language-"] {
+  margin: 0;
+  border-radius: 0;
+  background: var(--code);
+  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  text-shadow: none;
+}
+
+.code-card code[class*="language-"] {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  text-shadow: none;
+}
+
+.code-card .token a {
+  color: inherit;
+  pointer-events: none;
+  text-decoration: none;
+}
+
 .execution-card pre {
   color: #d8dedf;
 }

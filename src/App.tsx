@@ -1,4 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import '../prism/prism.js';
+import '../prism/prism.css';
 import {
   Archive,
   ArrowLeft,
@@ -42,6 +44,7 @@ const INDEX_URL = '/archive-data/index.json';
 const ARTIFACTS_URL = '/archive-data/artifacts.json';
 const VIEWER_STATE_KEY = 'chatArchive.viewerState.v1';
 const FIELD_SCOPES: SearchFieldScope[] = ['all', 'title', 'content', 'code', 'raw', 'assets', 'documents', 'links'];
+const Prism = globalThis.Prism;
 const DEFAULT_FILTERS: SearchFilters = {
   query: '',
   fieldScope: 'all',
@@ -131,6 +134,45 @@ function getVisibleMessages(conversation: ConversationFile | null, showHidden: b
 
 function getMessageLabel(message: ArchiveMessage) {
   return message.text.replace(/\s+/g, ' ').trim().slice(0, 96) || `${roleLabel(message.role)} message`;
+}
+
+function normalizePrismLanguage(language: string) {
+  const normalized = String(language || 'text').trim().toLowerCase();
+  const aliases: Record<string, string> = {
+    'c#': 'csharp',
+    'c++': 'cpp',
+    cmd: 'batch',
+    console: 'shell-session',
+    cs: 'csharp',
+    dockerfile: 'docker',
+    golang: 'go',
+    html: 'markup',
+    js: 'javascript',
+    md: 'markdown',
+    none: 'text',
+    plaintext: 'text',
+    ps1: 'powershell',
+    py: 'python',
+    rb: 'ruby',
+    shell: 'bash',
+    shellscript: 'bash',
+    ts: 'typescript',
+    yml: 'yaml',
+  };
+  return aliases[normalized] || normalized || 'text';
+}
+
+function highlightCode(code: string, language: string) {
+  const prismLanguage = normalizePrismLanguage(language);
+  const grammar = Prism.languages[prismLanguage] || Prism.languages.text;
+  if (!grammar || prismLanguage === 'text' || prismLanguage === 'unknown') {
+    return { html: Prism.util.encode(code), language: 'text' };
+  }
+  try {
+    return { html: Prism.highlight(code, grammar, prismLanguage), language: prismLanguage };
+  } catch {
+    return { html: Prism.util.encode(code), language: 'text' };
+  }
 }
 
 function getConversationById(index: ArchiveIndex, id: string) {
@@ -459,17 +501,22 @@ function CopyButton({ value, label = 'Copy' }: { value: string; label?: string }
 }
 
 function CodeBlock({ block }: { block: Extract<MessageBlock, { type: 'code' }> }) {
+  const highlighted = useMemo(() => highlightCode(block.text, block.language), [block.language, block.text]);
+
   return (
     <section className="code-card">
       <div className="code-header">
         <span>
           <Code2 size={15} />
-          {block.language || 'text'}
+          {block.language || highlighted.language}
         </span>
         <CopyButton value={block.text} />
       </div>
-      <pre>
-        <code>{block.text}</code>
+      <pre className={`language-${highlighted.language}`}>
+        <code
+          className={`language-${highlighted.language}`}
+          dangerouslySetInnerHTML={{ __html: highlighted.html }}
+        />
       </pre>
     </section>
   );

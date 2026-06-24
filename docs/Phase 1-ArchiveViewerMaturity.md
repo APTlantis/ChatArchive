@@ -1,7 +1,9 @@
 # Phase 1: Archive Viewer Maturity
 
 ## Summary
-Upgrade the current static React archive reader into a stronger local ChatGPT archive browser without adding a backend. Keep the app local-first, use `localStorage` for personal navigation state, and focus Phase 1 on search/filtering, navigation memory, message bookmarks, a start-screen statistics dashboard, and the first dedicated artifact indexes. Defer full explorer views and provider-neutral ingestion to later phases.
+Upgrade the current static React archive reader into a stronger local ChatGPT archive browser without adding a backend. Keep the app local-first, use `localStorage` for personal navigation state, and focus Phase 1 on search/filtering, navigation memory, message bookmarks, a start-screen statistics dashboard, the first dedicated artifact indexes, and local code highlighting. Defer full explorer views and provider-neutral ingestion to later phases.
+
+**Status:** Complete.
 
 ## Key Changes
 - Replace the current auto-select-first-conversation behavior with a start dashboard shown on launch.
@@ -17,6 +19,10 @@ Upgrade the current static React archive reader into a stronger local ChatGPT ar
 - Add generated artifact indexes.
   - `public/archive-data/artifacts.json` stores code blocks, assets, document-like Markdown blocks, and links.
   - Language, asset kind, document, link, and domain search are backed by the artifact index rather than approximated from conversation summaries.
+- Add local code highlighting.
+  - Use the bundled Prism build in `prism/prism.js` and `prism/prism.css`.
+  - Do not make CDN calls.
+  - Keep highlighting visual-only; code copy/export preserves original source text.
 - Add browser-local viewer state under one versioned key, `chatArchive.viewerState.v1`.
   - Store favorites, pinned conversations, read/unread status, recently viewed conversations, message bookmarks, and per-conversation last scroll position.
   - Keep state resilient to regenerated archive data: ignore stored conversation/message IDs that no longer exist.
@@ -58,3 +64,4 @@ Upgrade the current static React archive reader into a stronger local ChatGPT ar
 - Message bookmarks and artifact-backed search are in scope; full artifact explorer screens are not.
 - Full global artifact indexes are in scope; richer explorer UI is deferred to Phase 2.
 - Search should be useful and visible first, with typed operators as a power layer rather than a full query language.
+- Prism is bundled locally as a full language set, so a larger production JS chunk is acceptable for Phase 1.

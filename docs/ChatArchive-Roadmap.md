@@ -4,7 +4,7 @@
 
 **Goal:** Become the best local ChatGPT archive browser.
 
-**Status:** Implemented as the first viewer-maturity pass. The app now opens to a dashboard, supports richer client-side search and filters, stores viewer navigation state in browser `localStorage` under `chatArchive.viewerState.v1`, and generates a dedicated artifact index for code, assets, documents, and links.
+**Status:** Complete. The app now opens to a dashboard, supports richer client-side search and filters, stores viewer navigation state in browser `localStorage` under `chatArchive.viewerState.v1`, generates a dedicated artifact index for code, assets, documents, and links, and highlights code blocks with locally bundled Prism.
 
 ### Search Improvements
 
@@ -20,12 +20,13 @@ Current:
 * Date range filters
 * Conversation length filters
 * Dedicated artifact indexes for exact language, asset, document, and link search
+* Locally bundled Prism code highlighting
 
 Remaining:
 
 * Saved searches
 * Semantic search
-* Explorer views for code, documents, assets, and links
+* Explorer views for code, documents, assets, and links are promoted to Phase 2
 
 Example:
 
@@ -86,6 +87,8 @@ computed from archive index
 
 **Goal:** Stop treating conversations as blobs.
 
+**Status:** Planned. The artifact index exists; Phase 2 builds dedicated explorer views and workflows on top of it.
+
 ---
 
 ## Code Explorer
@@ -115,9 +118,11 @@ Features:
 
 * Browse by language
 * Search code only
+* Use Prism highlighting in snippets and detail views
 * Export snippets
 * Copy snippet
 * Open source conversation
+* Show snippet size, message role, date, and source conversation
 
 ---
 
@@ -143,6 +148,13 @@ Documents
 ├── Architecture
 ```
 
+Features:
+
+* Browse by document type
+* Search document titles and previews
+* Export selected candidates to Markdown
+* Open source conversation
+
 ---
 
 ## Asset Explorer
@@ -166,6 +178,14 @@ Assets
 ├── Generated Images
 ```
 
+Features:
+
+* Browse by asset kind
+* Filter local, external, and missing assets
+* Open full-size previews
+* Open source conversation
+* Surface missing-asset repair targets
+
 ---
 
 ## Link Explorer
@@ -180,6 +200,14 @@ Repositories
 ```
 
 Useful for recovering old references.
+
+Features:
+
+* Browse by domain
+* Search labels and URLs
+* Copy URL
+* Open source conversation
+* Group common domains such as GitHub, documentation, package registries, and articles
 
 ---
 

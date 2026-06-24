@@ -16,11 +16,12 @@ This project started as a personal archive reader, but the shape is intentionall
 - Builds a dedicated artifact index in `public/archive-data/artifacts.json` for code, assets, document-like Markdown, and links.
 - Writes one JSON file per conversation in `public/archive-data/conversations`.
 - Provides a React reader with search, month grouping, conversation outline, image lightbox, code copy, all-code copy, raw-message toggle, and Markdown export.
+- Highlights code blocks with a locally bundled Prism build; no CDN or external runtime call is needed.
 - Opens to a local dashboard with archive totals, first/latest chat dates, code block counts, unresolved asset counts, recently viewed conversations, favorites, pins, and read/unread totals.
 - Supports richer client-side search with phrases, regex mode, field chips, typed operators such as `type:code`, `language:python`, `type:document`, `type:link`, `domain:github.com`, date ranges, and conversation length filters.
 - Stores viewer-only state in browser `localStorage` under `chatArchive.viewerState.v1`, including favorites, pins, read markers, recently viewed conversations, message bookmarks, and last scroll position.
 
-The current local archive build contains 448 conversations, 26,374 visible messages, 9,584 hidden/raw messages, and 2,282 copied local assets. Those numbers come from the generated data currently in this working tree and will change whenever a different export is ingested.
+The current local archive build contains 448 conversations, 26,374 visible messages, 9,584 hidden/raw messages, 3,315 copied local assets, 25,006 code artifacts, 10,297 document artifacts, and 8,096 link artifacts. Those numbers come from the generated data currently in this working tree and will change whenever a different export is ingested.
 
 ## Why This Exists
 
@@ -111,6 +112,9 @@ D:\Chat
 │   ├── main.tsx                       # React entrypoint
 │   ├── styles.css                     # App styling
 │   └── types.ts                       # Archive data types
+├── prism/
+│   ├── prism.js                       # Locally bundled Prism languages/plugins
+│   └── prism.css                      # Prism Okaidia theme
 ├── public/
 │   ├── archive-data/
 │   │   ├── index.json                 # Search/list index and totals
@@ -143,6 +147,7 @@ This normalized layer is what makes future provider support realistic. Gemini, C
 - Asset recovery is best-effort. Some OpenAI pointers cannot be matched to local files, but unresolved pointers are recorded.
 - Audio and video payloads are skipped by the current asset extractor.
 - Search is client-side over generated indexes. Exact artifact search depends on a fresh `npm run ingest` so `artifacts.json` matches the current archive.
+- Prism is bundled as one full local language set, so the production JS chunk is intentionally larger than before.
 - Favorites, pins, bookmarks, read markers, and scroll positions are browser-local state. They do not currently sync across browsers or export as a sidecar file.
 - There is no built-in privacy scrubber yet. Treat generated archive files as sensitive.
 - There is no database or server API. This is currently a static archive reader.
@@ -277,4 +282,4 @@ The UI is deliberately static. It fetches JSON from `/archive-data`, renders con
 
 ## Status
 
-Phase 1 archive viewer maturity is implemented, including the first dedicated artifact index. The app is useful today for local OpenAI export browsing, dashboard review, richer search/filtering, exact artifact-backed operators, and browser-local navigation state, with a clear path toward explorer views, provider-neutral archives, and local-model continuation.
+Phase 1 archive viewer maturity is complete. The app is useful today for local OpenAI export browsing, dashboard review, Prism-highlighted code reading, richer search/filtering, exact artifact-backed operators, and browser-local navigation state, with a clear path toward Phase 2 explorer views.
