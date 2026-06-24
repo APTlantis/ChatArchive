@@ -1,26 +1,28 @@
-# Chat Archive
+# ChatArchive
 
-A local-first viewer for exported ChatGPT conversations. It turns an OpenAI data export into a fast, searchable, static archive with readable conversation threads, copied image assets, highlighted code blocks, rendered Mermaid diagrams, raw-message visibility, and per-conversation Markdown export.
+A local-first desktop archive for exported ChatGPT conversations. ChatArchive now uses a Tauri 2 shell, a React reader, a Rust OpenAI importer, durable SQLite app state, and a filesystem-backed library folder for normalized conversations, screenshots, attachments, exports, and manifests.
 
-This project started as a personal archive reader, but the shape is intentionally useful beyond one person's ChatGPT history: a provider export goes in, normalized conversation data comes out, and the UI reads that normalized archive without needing a backend.
+This project started as a static personal archive reader, but the direction is broader: a provider export goes in, normalized conversation data and durable indexes come out, and the same reader can eventually support ChatGPT, Claude, Gemini, local LLM tools, and other AI conversation sources without trusting browser storage as the permanent home.
 
 ## What It Does Today
 
-- Imports `openai-history/conversations.json` from a ChatGPT/OpenAI export.
+- Runs as a Tauri desktop app on top of the existing Vite/React UI.
+- Lets the user choose a visible `ChatArchive/` library folder for backup clarity.
+- Imports a ChatGPT/OpenAI export through the Rust backend.
 - Normalizes conversation trees into ordered message threads.
 - Separates visible chat messages from hidden/raw system, tool, and metadata messages.
 - Extracts Markdown text, fenced code blocks, execution output, citations, references, and image pointers.
-- Copies matching local image assets into `public/archive-assets`.
-- Tracks unresolved asset pointers and external image URLs in `public/archive-data/assets-manifest.json`.
-- Builds a static archive index in `public/archive-data/index.json`.
-- Builds a dedicated artifact index in `public/archive-data/artifacts.json` for code, assets, document-like Markdown, and links.
-- Writes one JSON file per conversation in `public/archive-data/conversations`.
+- Copies matching local image assets into the selected library folder.
+- Tracks unresolved asset pointers and external image URLs in durable archive metadata.
+- Writes normalized per-conversation JSON on disk.
+- Stores archive, conversation, message, artifact, search, tag, bookmark, favorite, pin, read-state, recent-view, and scroll metadata in SQLite.
+- Builds dedicated artifact records for code, assets, document-like Markdown, and links.
 - Provides a React reader with search, month grouping, conversation outline, image lightbox, code copy, all-code copy, raw-message toggle, and Markdown export.
 - Highlights code blocks with a locally bundled Prism build; no CDN or external runtime call is needed.
 - Renders Mermaid and ZenUML fenced diagrams from local npm packages, with source fallback when a diagram cannot be parsed.
 - Opens to a local dashboard with archive totals, first/latest chat dates, code block counts, unresolved asset counts, recently viewed conversations, favorites, pins, and read/unread totals.
 - Supports richer client-side search with phrases, regex mode, field chips, typed operators such as `type:code`, `language:python`, `type:document`, `type:link`, `domain:github.com`, date ranges, and conversation length filters.
-- Stores viewer-only state in browser `localStorage` under `chatArchive.viewerState.v1`, including favorites, pins, read markers, recently viewed conversations, message bookmarks, and last scroll position.
+- Migrates existing browser `localStorage` viewer state from `chatArchive.viewerState.v1` once, then treats SQLite as authoritative.
 
 The current local archive build contains 448 conversations, 26,374 visible messages, 9,584 hidden/raw messages, 3,315 copied local assets, 25,006 code artifacts, 10,297 document artifacts, and 8,096 link artifacts. Those numbers come from the generated data currently in this working tree and will change whenever a different export is ingested.
 
@@ -38,9 +40,10 @@ Most chat exports are useful but awkward. They preserve data, not continuity. Th
 
 - Node.js
 - npm
+- Rust toolchain compatible with Tauri 2
 - A ChatGPT/OpenAI export folder containing `conversations.json`
 
-The app is currently a Vite + React + TypeScript project.
+The app is now a Tauri 2 + React + TypeScript + Rust project.
 
 ## Setup
 
@@ -50,52 +53,59 @@ Install dependencies:
 npm install
 ```
 
-Place your OpenAI export in:
-
-```text
-openai-history/
-```
-
-The expected file is:
-
-```text
-openai-history/conversations.json
-```
-
-Then ingest the archive:
+Run the desktop app in development:
 
 ```powershell
-npm run ingest
+npm run tauri:dev
 ```
 
-Start the local dev server:
-
-```powershell
-npm run dev
-```
-
-Build the static app:
+Build the React frontend:
 
 ```powershell
 npm run build
 ```
 
-Preview the production build:
+Build the Windows desktop bundle:
 
 ```powershell
+npm run tauri:build
+```
+
+The app will ask for a library folder. A normal library layout looks like:
+
+```text
+ChatArchive/
+├── archives/
+│   └── openai-2026-02/
+│       ├── raw/
+│       ├── conversations/
+│       ├── assets/
+│       ├── exports/
+│       └── manifest.json
+├── chatarchive.db
+└── settings.json
+```
+
+The legacy static ingest path is still present for comparison and fallback development:
+
+```powershell
+npm run ingest
+npm run dev
 npm run preview
 ```
 
 ## Using A Different Export Location
 
-By default, the ingest script reads from `D:\Chat\openai-history`. You can point it at another OpenAI export folder with `OPENAI_HISTORY_DIR`:
+In the Tauri app, choose the OpenAI export folder from the import dialog. The folder should contain `conversations.json`.
+
+For the legacy Node ingest script, the default source is `D:\Chat\openai-history`. You can point it at another OpenAI export folder with `OPENAI_HISTORY_DIR`:
 
 ```powershell
 $env:OPENAI_HISTORY_DIR = "D:\Exports\openai-history"
 npm run ingest
 ```
 
-The generated archive is still written into:
+The legacy static archive is written into:
 
 ```text
 public/archive-data/
@@ -106,10 +116,20 @@ public/archive-assets/
 
 ```text
 D:\Chat
+├── src-tauri/
+│   ├── src/
+│   │   ├── main.rs                    # Tauri command registration
+│   │   ├── commands.rs                # Frontend command boundary
+│   │   ├── db.rs                      # SQLite schema, settings, viewer state
+│   │   ├── importer.rs                # Rust OpenAI importer
+│   │   └── models.rs                  # Shared archive/viewer models
+│   ├── capabilities/                  # Tauri permissions
+│   └── tauri.conf.json
 ├── scripts/
-│   └── ingest-openai-history.js       # OpenAI export normalizer
+│   └── ingest-openai-history.js       # Legacy static OpenAI normalizer
 ├── src/
 │   ├── App.tsx                        # Archive reader UI
+│   ├── archiveApi.ts                  # Tauri command/static fetch adapter
 │   ├── main.tsx                       # React entrypoint
 │   ├── styles.css                     # App styling
 │   └── types.ts                       # Archive data types
@@ -119,11 +139,11 @@ D:\Chat
 ├── mermaid/                           # Downloaded Mermaid source snapshot/reference
 ├── public/
 │   ├── archive-data/
-│   │   ├── index.json                 # Search/list index and totals
-│   │   ├── artifacts.json             # Code, asset, document, and link index
+│   │   ├── index.json                 # Legacy static search/list index
+│   │   ├── artifacts.json             # Legacy static artifact index
 │   │   ├── assets-manifest.json       # Copied, external, and missing asset records
 │   │   └── conversations/             # One normalized JSON file per conversation
-│   └── archive-assets/                # Copied local image assets
+│   └── archive-assets/                # Legacy copied local image assets
 ├── openai-history/                    # Source export folder, local/private
 └── dist/                              # Production build output
 ```
@@ -138,7 +158,8 @@ The app reads a small normalized model instead of rendering the raw provider exp
 - `ArchiveMessage` stores role, author, time, content type, extracted blocks, assets, references, hidden/raw status, and original content type.
 - `MessageBlock` supports Markdown, code, execution output, and notices.
 - `ArchiveAsset` tracks local, external, and missing assets.
-- `ArtifactIndex` powers exact language, code, asset, document, and link search without loading every conversation file.
+- `ArtifactIndex`/SQLite artifact tables power exact language, code, asset, document, and link search without loading every conversation file.
+- SQLite owns user state: favorites, pins, read/unread status, recently viewed conversations, message bookmarks, tags, saved searches, and scroll positions.
 
 This normalized layer is what makes future provider support realistic. Gemini, Claude, Ollama, Jan, or other sources do not need to match OpenAI's export format; they only need adapters that produce the same archive model.
 
@@ -148,12 +169,11 @@ This normalized layer is what makes future provider support realistic. Gemini, C
 - Markdown rendering is intentionally lightweight and does not cover every Markdown extension.
 - Asset recovery is best-effort. Some OpenAI pointers cannot be matched to local files, but unresolved pointers are recorded.
 - Audio and video payloads are skipped by the current asset extractor.
-- Search is client-side over generated indexes. Exact artifact search depends on a fresh `npm run ingest` so `artifacts.json` matches the current archive.
+- Search and listing are moving behind Tauri/SQLite. Some rich filtering still reuses the existing frontend filter layer over the loaded index while Phase 2 explorer views are built.
 - Prism and Mermaid are bundled locally, so the production build is intentionally larger than a CDN-based version.
 - Mermaid diagram rendering is limited to fenced `mermaid`, `mmd`, and `zenuml` code blocks.
-- Favorites, pins, bookmarks, read markers, and scroll positions are browser-local state. They do not currently sync across browsers or export as a sidecar file.
 - There is no built-in privacy scrubber yet. Treat generated archive files as sensitive.
-- There is no database or server API. This is currently a static archive reader.
+- Provider-neutral import begins with the Rust `ProviderImporter` boundary, but only the OpenAI implementation exists right now.
 
 ## Privacy Notes
 

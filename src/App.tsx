@@ -41,9 +41,25 @@ import type {
   SearchFilters,
   ViewerState,
 } from './types';
+import {
+  exportConversationMarkdown as exportConversationMarkdownDesktop,
+  getLibraryStatus,
+  importOpenAiExport,
+  isTauriRuntime,
+  loadArchiveIndex,
+  loadArtifactIndex,
+  loadConversation,
+  markRead,
+  resolveArchiveAssetUrl,
+  saveMessageBookmark,
+  saveScrollPosition,
+  saveViewerState,
+  selectLibraryFolder,
+  toggleFavorite,
+  togglePin,
+  type LibraryStatus,
+} from './archiveApi';
 
-const INDEX_URL = '/archive-data/index.json';
-const ARTIFACTS_URL = '/archive-data/artifacts.json';
 const VIEWER_STATE_KEY = 'chatArchive.viewerState.v1';
 const FIELD_SCOPES: SearchFieldScope[] = ['all', 'title', 'content', 'code', 'raw', 'assets', 'documents', 'links'];
 const Prism = globalThis.Prism;
@@ -212,32 +228,26 @@ function useArchiveIndex() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(INDEX_URL)
-      .then((response) => {
-        if (!response.ok) throw new Error(`Could not load ${INDEX_URL}`);
-        return response.json();
-      })
+    if (isTauriRuntime()) return;
+    loadArchiveIndex()
       .then(setIndex)
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, []);
 
-  return { index, error };
+  return { index, error, setIndex, setError };
 }
 
 function useArtifactIndex() {
   const [artifacts, setArtifacts] = useState<ArtifactIndex | null>(null);
 
   useEffect(() => {
-    fetch(ARTIFACTS_URL)
-      .then((response) => {
-        if (!response.ok) return null;
-        return response.json();
-      })
+    if (isTauriRuntime()) return;
+    loadArtifactIndex()
       .then(setArtifacts)
       .catch(() => setArtifacts(null));
   }, []);
 
-  return artifacts;
+  return { artifacts, setArtifacts };
 }
 
 interface ArtifactSearchData {
@@ -632,7 +642,7 @@ function AssetGrid({ assets, onOpen }: { assets: ArchiveAsset[]; onOpen: (asset:
 
         return (
           <button className="asset" key={asset.id} type="button" onClick={() => onOpen(asset)}>
-            <img src={asset.url} alt={asset.label} loading="lazy" />
+            <img src={resolveArchiveAssetUrl(asset.url)} alt={asset.label} loading="lazy" />
             <span>{asset.kind === 'external' ? 'External image' : asset.label}</span>
           </button>
         );
@@ -712,7 +722,7 @@ function MessageView({
   );
 }
 
-function exportConversationMarkdown(conversation: ConversationFile, messages: ArchiveMessage[]) {
+function buildConversationMarkdown(conversation: ConversationFile, messages: ArchiveMessage[]) {
   const lines = [
     `# ${conversation.title}`,
     '',
@@ -739,7 +749,14 @@ function exportConversationMarkdown(conversation: ConversationFile, messages: Ar
     }
   }
 
-  const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
+  return lines.join('\n');
+}
+
+async function exportConversationMarkdown(conversation: ConversationFile, messages: ArchiveMessage[]) {
+  const markdown = buildConversationMarkdown(conversation, messages);
+  const desktopPath = await exportConversationMarkdownDesktop(conversation.id, markdown);
+  if (desktopPath) return;
+  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -1179,8 +1196,8 @@ function Header({
           <button
             className="toolbar-button"
             type="button"
-            onClick={() => {
-              exportConversationMarkdown(conversation, messages);
+            onClick={async () => {
+              await exportConversationMarkdown(conversation, messages);
               setExported(true);
               window.setTimeout(() => setExported(false), 1600);
             }}
@@ -1202,20 +1219,62 @@ function Lightbox({ asset, onClose }: { asset: ArchiveAsset | null; onClose: () 
         <X size={20} />
       </button>
       <figure>
-        <img src={asset.url} alt={asset.label} />
+        <img src={resolveArchiveAssetUrl(asset.url)} alt={asset.label} />
         <figcaption>
           <ImageIcon size={16} />
           <span>{asset.label}</span>
-          <a href={asset.url} target="_blank" rel="noreferrer">Open full size</a>
+          <a href={resolveArchiveAssetUrl(asset.url)} target="_blank" rel="noreferrer">Open full size</a>
         </figcaption>
       </figure>
     </div>
   );
 }
 
+function LibrarySetup({
+  status,
+  busy,
+  message,
+  onChooseLibrary,
+  onImport,
+}: {
+  status: LibraryStatus | null;
+  busy: boolean;
+  message: string;
+  onChooseLibrary: () => void;
+  onImport: () => void;
+}) {
+  return (
+    <main className="boot-screen library-setup">
+      <Archive size={34} />
+      <h1>Choose a durable archive library</h1>
+      <p>
+        ChatArchive now stores archive indexes and viewer state in SQLite, with conversations and assets in a filesystem library folder.
+      </p>
+      <div className="setup-path">
+        <span>Library</span>
+        <strong>{status?.libraryPath || 'No folder selected'}</strong>
+      </div>
+      <div className="setup-actions">
+        <button className="toolbar-button" type="button" onClick={onChooseLibrary} disabled={busy}>
+          <FileImage size={16} />
+          Choose library
+        </button>
+        <button className="toolbar-button active" type="button" onClick={onImport} disabled={busy || !status?.configured}>
+          <Download size={16} />
+          Import OpenAI export
+        </button>
+      </div>
+      {message ? <p className="setup-message">{message}</p> : null}
+    </main>
+  );
+}
+
 export default function App() {
-  const { index, error } = useArchiveIndex();
-  const artifacts = useArtifactIndex();
+  const { index, error, setIndex, setError } = useArchiveIndex();
+  const { artifacts, setArtifacts } = useArtifactIndex();
+  const [libraryStatus, setLibraryStatus] = useState<LibraryStatus | null>(null);
+  const [libraryBusy, setLibraryBusy] = useState(false);
+  const [libraryMessage, setLibraryMessage] = useState('');
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
   const [viewerState, setViewerState] = useState<ViewerState>(() => readViewerState());
   const [selected, setSelected] = useState<ConversationSummary | null>(null);
@@ -1229,14 +1288,38 @@ export default function App() {
   const scrollPositions = useRef(viewerState.scrollPositions);
 
   useEffect(() => {
+    if (!isTauriRuntime()) return;
+    getLibraryStatus()
+      .then((status) => {
+        if (!status) return;
+        setLibraryStatus(status);
+        if (status.index) setIndex(status.index);
+        if (status.artifacts) setArtifacts(status.artifacts);
+        setViewerState(status.viewerState);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }, [setArtifacts, setError, setIndex]);
+
+  useEffect(() => {
     if (!index) return;
     setViewerState((state) => pruneViewerState(state, index.conversations));
   }, [index]);
 
   useEffect(() => {
-    window.localStorage.setItem(VIEWER_STATE_KEY, JSON.stringify(viewerState));
+    if (!isTauriRuntime()) window.localStorage.setItem(VIEWER_STATE_KEY, JSON.stringify(viewerState));
     scrollPositions.current = viewerState.scrollPositions;
   }, [viewerState]);
+
+  useEffect(() => {
+    if (!isTauriRuntime() || !index || !libraryStatus || libraryStatus.stateMigrated) return;
+    const localState = readViewerState();
+    saveViewerState(pruneViewerState(localState, index.conversations))
+      .then((state) => {
+        setViewerState(state);
+        setLibraryStatus((current) => (current ? { ...current, stateMigrated: true, viewerState: state } : current));
+      })
+      .catch((err) => console.error('Could not migrate browser viewer state', err));
+  }, [index, libraryStatus]);
 
   useEffect(() => {
     if (!selected) {
@@ -1244,11 +1327,7 @@ export default function App() {
       return;
     }
     setConversation(null);
-    fetch(`/archive-data/conversations/${selected.id}.json`)
-      .then((response) => {
-        if (!response.ok) throw new Error(`Could not load conversation ${selected.id}`);
-        return response.json();
-      })
+    loadConversation(selected.id)
       .then((data) => {
         setConversation(data);
         window.setTimeout(() => {
@@ -1283,9 +1362,21 @@ export default function App() {
   const conversationBookmarks = conversation ? viewerState.messageBookmarks[conversation.id] || [] : [];
   const bookmarkedMessageIds = new Set(conversationBookmarks.map((bookmark) => bookmark.messageId));
 
+  function applyViewerState(updater: (state: ViewerState) => ViewerState) {
+    setViewerState((state) => {
+      const next = updater(state);
+      if (isTauriRuntime()) {
+        saveViewerState(next)
+          .then(setViewerState)
+          .catch((err) => console.error('Could not save viewer state', err));
+      }
+      return next;
+    });
+  }
+
   function openConversation(next: ConversationSummary) {
     setSelected(next);
-    setViewerState((state) => ({
+    applyViewerState((state) => ({
       ...state,
       recentlyViewed: [
         { conversationId: next.id, viewedAt: Date.now() },
@@ -1296,6 +1387,11 @@ export default function App() {
 
   function mutateConversationRecord(key: 'favorites' | 'pinned') {
     if (!selected) return;
+    if (isTauriRuntime()) {
+      const action = key === 'favorites' ? toggleFavorite : togglePin;
+      action(selected.id).then((state) => state && setViewerState(state)).catch((err) => console.error(err));
+      return;
+    }
     setViewerState((state) => {
       const record = { ...state[key] };
       if (record[selected.id]) delete record[selected.id];
@@ -1306,6 +1402,10 @@ export default function App() {
 
   function toggleRead() {
     if (!selected) return;
+    if (isTauriRuntime()) {
+      markRead(selected.id, !viewerState.read[selected.id]).then((state) => state && setViewerState(state)).catch((err) => console.error(err));
+      return;
+    }
     setViewerState((state) => {
       const read = { ...state.read };
       if (read[selected.id]) delete read[selected.id];
@@ -1316,6 +1416,18 @@ export default function App() {
 
   function toggleMessageBookmark(message: ArchiveMessage) {
     if (!selected) return;
+    const current = viewerState.messageBookmarks[selected.id] || [];
+    const exists = current.some((bookmark) => bookmark.messageId === message.id);
+    const bookmark = {
+      conversationId: selected.id,
+      messageId: message.id,
+      label: getMessageLabel(message),
+      createdAt: Date.now(),
+    };
+    if (isTauriRuntime()) {
+      saveMessageBookmark(bookmark, !exists).then((state) => state && setViewerState(state)).catch((err) => console.error(err));
+      return;
+    }
     setViewerState((state) => {
       const current = state.messageBookmarks[selected.id] || [];
       const exists = current.some((bookmark) => bookmark.messageId === message.id);
@@ -1328,10 +1440,10 @@ export default function App() {
             : [
                 ...current,
                 {
-                  conversationId: selected.id,
-                  messageId: message.id,
-                  label: getMessageLabel(message),
-                  createdAt: Date.now(),
+                  conversationId: bookmark.conversationId,
+                  messageId: bookmark.messageId,
+                  label: bookmark.label,
+                  createdAt: bookmark.createdAt,
                 },
               ],
         },
@@ -1356,6 +1468,10 @@ export default function App() {
     if (saveScrollTimer.current) window.clearTimeout(saveScrollTimer.current);
     const top = mainRef.current.scrollTop;
     saveScrollTimer.current = window.setTimeout(() => {
+      if (isTauriRuntime()) {
+        saveScrollPosition(selected.id, top).then((state) => state && setViewerState(state)).catch((err) => console.error(err));
+        return;
+      }
       setViewerState((state) => ({
         ...state,
         scrollPositions: { ...state.scrollPositions, [selected.id]: top },
@@ -1371,6 +1487,49 @@ export default function App() {
         <p>{error}</p>
         <code>npm run ingest</code>
       </main>
+    );
+  }
+
+  if (isTauriRuntime() && (!libraryStatus?.configured || !index)) {
+    return (
+      <LibrarySetup
+        status={libraryStatus}
+        busy={libraryBusy}
+        message={libraryMessage}
+        onChooseLibrary={async () => {
+          setLibraryBusy(true);
+          setLibraryMessage('');
+          try {
+            const next = await selectLibraryFolder();
+            if (next) setLibraryStatus(next);
+          } catch (err) {
+            setLibraryMessage(err instanceof Error ? err.message : String(err));
+          } finally {
+            setLibraryBusy(false);
+          }
+        }}
+        onImport={async () => {
+          setLibraryBusy(true);
+          setLibraryMessage('Importing archive...');
+          try {
+            const result = await importOpenAiExport(libraryStatus?.libraryPath);
+            if (result) {
+              setIndex(result.index);
+              setArtifacts(result.artifacts);
+              const status = await getLibraryStatus();
+              if (status) {
+                setLibraryStatus(status);
+                setViewerState(status.viewerState);
+              }
+              setLibraryMessage(`Imported ${result.index.totals.conversations.toLocaleString()} conversations.`);
+            }
+          } catch (err) {
+            setLibraryMessage(err instanceof Error ? err.message : String(err));
+          } finally {
+            setLibraryBusy(false);
+          }
+        }}
+      />
     );
   }
 

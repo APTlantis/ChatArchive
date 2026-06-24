@@ -1,0 +1,1 @@
+{"main":{"identifier":"main","description":"Primary ChatArchive desktop window permissions","local":true,"windows":["main"],"permissions":["core:default","dialog:default"]}}

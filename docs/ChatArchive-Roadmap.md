@@ -6,7 +6,24 @@
 
 **Status:** Complete. The app now opens to a dashboard, supports richer client-side search and filters, stores viewer navigation state in browser `localStorage` under `chatArchive.viewerState.v1`, generates a dedicated artifact index for code, assets, documents, and links, highlights code blocks with locally bundled Prism, and renders Mermaid/ZenUML diagrams locally.
 
-### Search Improvements
+## Phase 1.5 — Tauri Durable Archive Foundation
+
+**Goal:** Move the project from a static browser prototype to a durable local desktop app before building deeper explorer workflows.
+
+**Status:** Complete as the new product foundation. ChatArchive now has a Tauri 2 shell, React UI, Rust OpenAI importer, user-selected `ChatArchive/` library folder, SQLite metadata/state database, filesystem-backed archive assets, Markdown export through the backend, and one-time migration from `chatArchive.viewerState.v1`.
+
+Implemented:
+
+* User-chosen library folder with `archives/`, `chatarchive.db`, and `settings.json`
+* Rust `ProviderImporter` boundary with `OpenAiImporter` as the first implementation
+* Transaction-oriented archive import with staged archive folders
+* Normalized per-conversation JSON on disk
+* Copied screenshots and attachments stored as normal filesystem assets
+* SQLite tables for archives, conversations, messages, code artifacts, asset artifacts, document artifacts, link artifacts, tags, saved searches, favorites, pins, read state, recent views, bookmarks, scroll positions, and FTS search
+* Tauri commands for library setup, import, listing, conversation loading, search, dashboard data, viewer-state updates, and Markdown export
+* Browser fallback adapter retained for static development, but durable state now belongs to SQLite
+
+### Phase 1 Search Improvements
 
 Current:
 
@@ -49,7 +66,7 @@ type:code blake3
 
 ---
 
-### Navigation Improvements
+### Phase 1 Navigation Improvements
 
 Implemented:
 
@@ -62,7 +79,7 @@ Implemented:
 
 ---
 
-### Archive Statistics
+### Phase 1 Archive Statistics
 
 Implemented dashboard:
 
@@ -88,7 +105,7 @@ computed from archive index
 
 **Goal:** Stop treating conversations as blobs.
 
-**Status:** Planned. The artifact index exists; Phase 2 builds dedicated explorer views and workflows on top of it.
+**Status:** Planned. The artifact tables now exist in SQLite; Phase 2 builds dedicated explorer views and workflows on top of the Tauri command boundary, database indexes, and filesystem-backed archive library.
 
 ---
 

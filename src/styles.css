@@ -1042,6 +1042,46 @@ pre::-webkit-scrollbar-thumb:hover {
   color: var(--accent-2);
 }
 
+.library-setup {
+  max-width: 720px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.setup-path {
+  display: grid;
+  gap: 6px;
+  width: min(620px, 100%);
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  text-align: left;
+}
+
+.setup-path span {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.setup-path strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.setup-message {
+  color: var(--soft);
+}
+
 .lightbox {
   position: fixed;
   inset: 0;
