@@ -15,12 +15,16 @@ Phase 1 stopped the archive from being a passive transcript viewer. Phase 2 shou
 
 Goal: make code blocks directly browseable.
 
-- Add an explorer mode or tab for Code.
-- Group by language with counts.
-- Search code text, language, conversation title, and source role.
-- Show snippet preview with Prism highlighting.
-- Support copy snippet, export snippet, and open source conversation at source message.
-- Show language, date, source conversation, role, and approximate size.
+Status: Implemented.
+
+- Added a Code Explorer view from the sidebar.
+- Grouped code artifacts by language with counts from the artifact index/SQLite code artifact table.
+- Added search across code text, language, conversation title, and source role.
+- Shows a bounded, dense snippet list and Prism-highlighted selected snippet preview.
+- Supports copy snippet, export snippet, and open source conversation at the source message.
+- Shows language, date, source conversation, role, and approximate size.
+- Uses the Tauri `list_code_artifacts` command in desktop mode and falls back to `artifacts.json` in static browser mode.
+- Mounts only the first 500 visible rows while preserving full result counts, so large archives do not render tens of thousands of snippet rows at once.
 
 Acceptance checks:
 

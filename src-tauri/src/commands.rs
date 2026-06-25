@@ -109,6 +109,12 @@ pub fn get_artifact_index(app: AppHandle) -> Result<Option<ArtifactIndex>, Strin
 }
 
 #[tauri::command]
+pub fn list_code_artifacts(app: AppHandle) -> Result<Vec<CodeArtifact>, String> {
+  let (_, conn) = open_library_db(&app)?;
+  db::list_code_artifacts(&conn)
+}
+
+#[tauri::command]
 pub fn get_dashboard(app: AppHandle) -> Result<LibraryStatus, String> {
   get_library_status(app)
 }

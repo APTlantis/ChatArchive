@@ -400,6 +400,21 @@ pub fn load_artifacts(conn: &Connection) -> AppResult<Option<ArtifactIndex>> {
   get_meta(conn, "artifact_index")
 }
 
+pub fn list_code_artifacts(conn: &Connection) -> AppResult<Vec<CodeArtifact>> {
+  let mut stmt = conn
+    .prepare("SELECT json FROM code_artifacts ORDER BY language COLLATE NOCASE, id")
+    .map_err(|err| format!("Could not prepare code artifact query: {err}"))?;
+  let rows = stmt
+    .query_map([], |row| row.get::<_, String>(0))
+    .map_err(|err| format!("Could not query code artifacts: {err}"))?;
+  let mut artifacts = Vec::new();
+  for row in rows {
+    let raw = row.map_err(|err| format!("Could not read code artifact row: {err}"))?;
+    artifacts.push(serde_json::from_str(&raw).map_err(|err| format!("Could not parse code artifact JSON: {err}"))?);
+  }
+  Ok(artifacts)
+}
+
 pub fn load_conversation(library: &Path, conn: &Connection, id: &str) -> AppResult<Option<ConversationFile>> {
   let path: Option<String> = conn
     .query_row("SELECT json_path FROM conversations WHERE id = ?1", params![id], |row| row.get(0))

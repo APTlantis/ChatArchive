@@ -13,6 +13,7 @@ fn main() {
       commands::list_conversations,
       commands::get_conversation,
       commands::get_artifact_index,
+      commands::list_code_artifacts,
       commands::search_conversations,
       commands::get_dashboard,
       commands::update_viewer_state,

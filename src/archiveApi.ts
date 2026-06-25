@@ -3,6 +3,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import type {
   ArchiveIndex,
   ArtifactIndex,
+  CodeArtifact,
   ConversationFile,
   SearchFilters,
   ViewerState,
@@ -71,6 +72,12 @@ export async function loadArtifactIndex(): Promise<ArtifactIndex | null> {
   } catch {
     return null;
   }
+}
+
+export async function loadCodeArtifacts(): Promise<CodeArtifact[]> {
+  if (isTauriRuntime()) return invoke<CodeArtifact[]>('list_code_artifacts');
+  const artifacts = await loadArtifactIndex();
+  return artifacts?.code || [];
 }
 
 export async function loadConversation(conversationId: string): Promise<ConversationFile> {

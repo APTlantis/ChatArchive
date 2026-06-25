@@ -33,6 +33,7 @@ import type {
   ArtifactIndex,
   ArchiveIndex,
   ArchiveMessage,
+  CodeArtifact,
   ConversationFile,
   ConversationSummary,
   MessageBlock,
@@ -48,6 +49,7 @@ import {
   isTauriRuntime,
   loadArchiveIndex,
   loadArtifactIndex,
+  loadCodeArtifacts,
   loadConversation,
   markRead,
   resolveArchiveAssetUrl,
@@ -73,6 +75,7 @@ const DEFAULT_FILTERS: SearchFilters = {
   minMessages: '',
   maxMessages: '',
 };
+type AppView = 'dashboard' | 'conversation' | 'code';
 
 function createEmptyViewerState(): ViewerState {
   return {
@@ -458,6 +461,29 @@ function filterMessagesForAssetSearch(messages: ArchiveMessage[], filters: Searc
   });
 }
 
+function codeArtifactLanguage(item: CodeArtifact) {
+  return (item.language || 'text').trim().toLowerCase() || 'text';
+}
+
+function formatApproxSize(text: string) {
+  const bytes = new TextEncoder().encode(text).length;
+  if (bytes < 1024) return `${bytes.toLocaleString()} B`;
+  return `${(bytes / 1024).toFixed(bytes > 10240 ? 0 : 1)} KB`;
+}
+
+function exportCodeSnippet(item: CodeArtifact) {
+  const language = codeArtifactLanguage(item);
+  const blob = new Blob([item.text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${item.conversationTitle.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 72) || 'snippet'}-${item.id}.${language}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function plainInline(text: string) {
   return text
     .split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g)
@@ -771,6 +797,7 @@ function Sidebar({
   index,
   conversations,
   selectedId,
+  activeView,
   filters,
   regexError,
   viewerState,
@@ -779,10 +806,12 @@ function Sidebar({
   onSelect,
   onToggleCollapsed,
   onHome,
+  onCodeExplorer,
 }: {
   index: ArchiveIndex;
   conversations: ConversationSummary[];
   selectedId: string | null;
+  activeView: AppView;
   filters: SearchFilters;
   regexError: string;
   viewerState: ViewerState;
@@ -791,6 +820,7 @@ function Sidebar({
   onSelect: (conversation: ConversationSummary) => void;
   onToggleCollapsed: () => void;
   onHome: () => void;
+  onCodeExplorer: () => void;
 }) {
   function updateFilter<K extends keyof SearchFilters>(key: K, value: SearchFilters[K]) {
     onFilters({ ...filters, [key]: value });
@@ -815,9 +845,13 @@ function Sidebar({
       {!collapsed && (
         <>
           <div className="sidebar-tools">
-            <button className="toolbar-button" type="button" onClick={onHome}>
+            <button className={activeView === 'dashboard' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onHome}>
               <Home size={16} />
               Home
+            </button>
+            <button className={activeView === 'code' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onCodeExplorer}>
+              <Code2 size={16} />
+              Code
             </button>
             <button className="toolbar-button" type="button" onClick={() => onFilters(DEFAULT_FILTERS)}>
               <RotateCcw size={16} />
@@ -1065,6 +1099,156 @@ function ArtifactDashboard({ artifacts }: { artifacts: ArtifactIndex | null }) {
   );
 }
 
+function CodeExplorer({
+  artifacts,
+  onOpenSource,
+}: {
+  artifacts: CodeArtifact[];
+  onOpenSource: (artifact: CodeArtifact) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [language, setLanguage] = useState('all');
+  const [selectedId, setSelectedId] = useState('');
+
+  const languages = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of artifacts) counts.set(codeArtifactLanguage(item), (counts.get(codeArtifactLanguage(item)) || 0) + 1);
+    return [...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [artifacts]);
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return artifacts
+      .filter((item) => language === 'all' || codeArtifactLanguage(item) === language)
+      .filter((item) => {
+        if (!needle) return true;
+        return `${item.text}\n${item.language}\n${item.conversationTitle}\n${item.role}`.toLowerCase().includes(needle);
+      })
+      .sort((a, b) => (b.createTime || 0) - (a.createTime || 0));
+  }, [artifacts, language, query]);
+
+  const selected = filtered.find((item) => item.id === selectedId) || filtered[0] || null;
+  const visibleRows = filtered.slice(0, 500);
+  const highlighted = useMemo(() => (selected ? highlightCode(selected.text, selected.language) : null), [selected]);
+
+  useEffect(() => {
+    if (!filtered.length) {
+      if (selectedId) setSelectedId('');
+      return;
+    }
+    if (!filtered.some((item) => item.id === selectedId)) setSelectedId(filtered[0].id);
+  }, [filtered, selectedId]);
+
+  return (
+    <section className="explorer code-explorer">
+      <div className="explorer-heading">
+        <div className="brand-mark large">
+          <Code2 size={24} />
+        </div>
+        <div>
+          <p>Artifact explorer</p>
+          <h2>Code Explorer</h2>
+        </div>
+      </div>
+      <div className="explorer-toolbar">
+        <label className="explorer-search">
+          <Search size={16} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search code, language, title, or role" />
+        </label>
+        <span>
+          {filtered.length.toLocaleString()} of {artifacts.length.toLocaleString()} snippets
+        </span>
+      </div>
+      <div className="explorer-grid">
+        <aside className="explorer-facets">
+          <button className={language === 'all' ? 'facet-row active' : 'facet-row'} type="button" onClick={() => setLanguage('all')}>
+            <span>All languages</span>
+            <strong>{artifacts.length.toLocaleString()}</strong>
+          </button>
+          {languages.map((item) => (
+            <button
+              className={language === item.name ? 'facet-row active' : 'facet-row'}
+              type="button"
+              key={item.name}
+              onClick={() => setLanguage(item.name)}
+            >
+              <span>{item.name}</span>
+              <strong>{item.count.toLocaleString()}</strong>
+            </button>
+          ))}
+        </aside>
+        <div className="artifact-list">
+          {visibleRows.map((item) => (
+            <button
+              className={selected?.id === item.id ? 'artifact-row selected' : 'artifact-row'}
+              type="button"
+              key={item.id}
+              onClick={() => setSelectedId(item.id)}
+            >
+              <span>
+                <Code2 size={14} />
+                {item.conversationTitle}
+              </span>
+              <small>
+                {codeArtifactLanguage(item)} - {roleLabel(item.role)} - {formatDate(item.createTime)}
+              </small>
+              <p>{item.preview}</p>
+            </button>
+          ))}
+          {filtered.length > visibleRows.length ? (
+            <p className="list-limit-note">Showing first {visibleRows.length.toLocaleString()} matches. Narrow search or choose a language to reduce the list.</p>
+          ) : null}
+          {!filtered.length ? <p className="empty-note">No code snippets match those filters.</p> : null}
+        </div>
+        <section className="artifact-detail">
+          {selected && highlighted ? (
+            <>
+              <div className="artifact-detail-head">
+                <div>
+                  <span>{codeArtifactLanguage(selected)}</span>
+                  <h3>{selected.conversationTitle}</h3>
+                  <p>
+                    {roleLabel(selected.role)} - {formatDate(selected.createTime)} - {formatApproxSize(selected.text)}
+                  </p>
+                </div>
+                <div className="artifact-actions">
+                  <CopyButton value={selected.text} label="Copy snippet" />
+                  <button className="toolbar-button" type="button" onClick={() => exportCodeSnippet(selected)}>
+                    <Download size={16} />
+                    Export
+                  </button>
+                  <button className="toolbar-button active" type="button" onClick={() => onOpenSource(selected)}>
+                    <ArrowLeft size={16} />
+                    Source
+                  </button>
+                </div>
+              </div>
+              <section className="code-card explorer-code-preview">
+                <div className="code-header">
+                  <span>
+                    <Code2 size={15} />
+                    {selected.language || highlighted.language}
+                  </span>
+                </div>
+                <pre className={`language-${highlighted.language}`}>
+                  <code
+                    className={`language-${highlighted.language}`}
+                    dangerouslySetInnerHTML={{ __html: highlighted.html }}
+                  />
+                </pre>
+              </section>
+            </>
+          ) : (
+            <p className="empty-note">Select a code snippet to inspect it.</p>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function RightRail({
   index,
   messages,
@@ -1277,8 +1461,10 @@ export default function App() {
   const [libraryMessage, setLibraryMessage] = useState('');
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
   const [viewerState, setViewerState] = useState<ViewerState>(() => readViewerState());
+  const [activeView, setActiveView] = useState<AppView>('dashboard');
   const [selected, setSelected] = useState<ConversationSummary | null>(null);
   const [conversation, setConversation] = useState<ConversationFile | null>(null);
+  const [codeArtifacts, setCodeArtifacts] = useState<CodeArtifact[]>([]);
   const [showHidden, setShowHidden] = useState(false);
   const [lightboxAsset, setLightboxAsset] = useState<ArchiveAsset | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -1299,6 +1485,23 @@ export default function App() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, [setArtifacts, setError, setIndex]);
+
+  useEffect(() => {
+    if (!artifacts && !isTauriRuntime()) {
+      setCodeArtifacts([]);
+      return;
+    }
+    if (!isTauriRuntime()) {
+      setCodeArtifacts(artifacts?.code || []);
+      return;
+    }
+    loadCodeArtifacts()
+      .then(setCodeArtifacts)
+      .catch((err) => {
+        console.error('Could not load code artifacts', err);
+        setCodeArtifacts(artifacts?.code || []);
+      });
+  }, [artifacts]);
 
   useEffect(() => {
     if (!index) return;
@@ -1376,6 +1579,7 @@ export default function App() {
 
   function openConversation(next: ConversationSummary) {
     setSelected(next);
+    setActiveView('conversation');
     applyViewerState((state) => ({
       ...state,
       recentlyViewed: [
@@ -1463,6 +1667,14 @@ export default function App() {
     openConversation(next);
   }
 
+  function openCodeArtifactSource(artifact: CodeArtifact) {
+    if (!index) return;
+    const next = getConversationById(index, artifact.conversationId);
+    if (!next) return;
+    pendingMessageId.current = artifact.messageId;
+    openConversation(next);
+  }
+
   function handleReaderScroll() {
     if (!selected || !mainRef.current) return;
     if (saveScrollTimer.current) window.clearTimeout(saveScrollTimer.current);
@@ -1543,11 +1755,12 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={activeView === 'code' ? 'app-shell explorer-open' : 'app-shell'}>
       <Sidebar
         index={index}
         conversations={filtered.conversations}
         selectedId={selected?.id || null}
+        activeView={activeView}
         filters={filters}
         regexError={filtered.regexError}
         viewerState={viewerState}
@@ -1555,7 +1768,14 @@ export default function App() {
         onSelect={openConversation}
         collapsed={collapsed}
         onToggleCollapsed={() => setCollapsed((value) => !value)}
-        onHome={() => setSelected(null)}
+        onHome={() => {
+          setSelected(null);
+          setActiveView('dashboard');
+        }}
+        onCodeExplorer={() => {
+          setSelected(null);
+          setActiveView('code');
+        }}
       />
       <main className="reader" ref={mainRef} onScroll={handleReaderScroll}>
         <Header
@@ -1580,7 +1800,7 @@ export default function App() {
             {filtered.conversations.length.toLocaleString()} filtered
           </span>
         </div>
-        {selected ? (
+        {activeView === 'conversation' && selected ? (
           conversation ? (
             <section className="conversation-flow">
               {displayedMessages.map((message) => (
@@ -1598,6 +1818,8 @@ export default function App() {
           ) : (
             <div className="conversation-loading">Loading conversation...</div>
           )
+        ) : activeView === 'code' ? (
+          <CodeExplorer artifacts={codeArtifacts} onOpenSource={openCodeArtifactSource} />
         ) : (
           <Dashboard index={index} artifacts={artifacts} viewerState={viewerState} onSelect={openConversation} />
         )}
