@@ -136,7 +136,6 @@ D:\Chat
 ├── prism/
 │   ├── prism.js                       # Locally bundled Prism languages/plugins
 │   └── prism.css                      # Prism Okaidia theme
-├── mermaid/                           # Downloaded Mermaid source snapshot/reference
 ├── public/
 │   ├── archive-data/
 │   │   ├── index.json                 # Legacy static search/list index
