@@ -69,6 +69,17 @@ import {
   togglePin,
   type LibraryStatus,
 } from './archiveApi';
+import {
+  countAssetKinds,
+  countCodeLanguages,
+  countDocumentTypes,
+  filterAssetArtifacts,
+  filterCodeArtifacts,
+  filterDocumentArtifacts,
+  normalizeCodeLanguage,
+  selectedExplorerArtifact,
+  visibleExplorerRows,
+} from './artifactLogic';
 
 const VIEWER_STATE_KEY = 'chatArchive.viewerState.v1';
 const FIELD_SCOPES: SearchFieldScope[] = ['all', 'title', 'content', 'code', 'raw', 'assets', 'documents', 'links'];
@@ -470,7 +481,7 @@ function filterMessagesForAssetSearch(messages: ArchiveMessage[], filters: Searc
 }
 
 function codeArtifactLanguage(item: CodeArtifact) {
-  return (item.language || 'text').trim().toLowerCase() || 'text';
+  return normalizeCodeLanguage(item);
 }
 
 function formatApproxSize(text: string) {
@@ -1145,26 +1156,15 @@ function CodeExplorer({
   const [selectedId, setSelectedId] = useState('');
 
   const languages = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const item of artifacts) counts.set(codeArtifactLanguage(item), (counts.get(codeArtifactLanguage(item)) || 0) + 1);
-    return [...counts.entries()]
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    return countCodeLanguages(artifacts);
   }, [artifacts]);
 
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return artifacts
-      .filter((item) => language === 'all' || codeArtifactLanguage(item) === language)
-      .filter((item) => {
-        if (!needle) return true;
-        return `${item.text}\n${item.language}\n${item.conversationTitle}\n${item.role}`.toLowerCase().includes(needle);
-      })
-      .sort((a, b) => (b.createTime || 0) - (a.createTime || 0));
+    return filterCodeArtifacts(artifacts, language, query);
   }, [artifacts, language, query]);
 
-  const selected = filtered.find((item) => item.id === selectedId) || filtered[0] || null;
-  const visibleRows = filtered.slice(0, 500);
+  const selected = selectedExplorerArtifact(filtered, selectedId);
+  const visibleRows = visibleExplorerRows(filtered);
   const highlighted = useMemo(() => (selected ? highlightCode(selected.text, selected.language) : null), [selected]);
 
   useEffect(() => {
@@ -1298,23 +1298,15 @@ function DocumentExplorer({
   const contentCache = useRef(new Map<string, string>());
 
   const types = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const item of artifacts) counts.set(item.documentType, (counts.get(item.documentType) || 0) + 1);
-    return [...counts.entries()]
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    return countDocumentTypes(artifacts);
   }, [artifacts]);
 
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return artifacts
-      .filter((item) => documentType === 'all' || item.documentType === documentType)
-      .filter((item) => !needle || `${item.title}\n${item.documentType}\n${item.preview}\n${item.conversationTitle}\n${item.role}`.toLowerCase().includes(needle))
-      .sort((a, b) => (b.createTime || 0) - (a.createTime || 0));
+    return filterDocumentArtifacts(artifacts, documentType, query);
   }, [artifacts, documentType, query]);
 
-  const selected = filtered.find((item) => item.id === selectedId) || filtered[0] || null;
-  const visibleRows = filtered.slice(0, 500);
+  const selected = selectedExplorerArtifact(filtered, selectedId);
+  const visibleRows = visibleExplorerRows(filtered);
 
   useEffect(() => {
     if (!filtered.length) {
@@ -1433,19 +1425,13 @@ function AssetExplorer({
   const [kind, setKind] = useState('all');
   const [selectedId, setSelectedId] = useState('');
   const counts = useMemo(() => {
-    const result = { local: 0, external: 0, missing: 0 };
-    for (const item of artifacts) result[item.kind] += 1;
-    return result;
+    return countAssetKinds(artifacts);
   }, [artifacts]);
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return artifacts
-      .filter((item) => kind === 'all' || item.kind === kind)
-      .filter((item) => !needle || `${item.label}\n${item.original}\n${item.url}\n${item.conversationTitle}`.toLowerCase().includes(needle))
-      .sort((a, b) => (b.createTime || 0) - (a.createTime || 0));
+    return filterAssetArtifacts(artifacts, kind, query);
   }, [artifacts, kind, query]);
-  const selected = filtered.find((item) => item.id === selectedId) || filtered[0] || null;
-  const visibleRows = filtered.slice(0, 500);
+  const selected = selectedExplorerArtifact(filtered, selectedId);
+  const visibleRows = visibleExplorerRows(filtered);
 
   useEffect(() => {
     if (!filtered.length) {

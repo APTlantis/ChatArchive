@@ -6,3 +6,6 @@
 /public/archive-data/
 /src-tauri/target/
 /.tmp-import-smoke/
+/.qa/
+/playwright-report/
+/coverage/

@@ -1,0 +1,53 @@
+[
+  {
+    "id": "fixture-conversation",
+    "conversation_id": "fixture-conversation",
+    "title": "Synthetic Phase 2 Archive",
+    "create_time": 1700000000,
+    "update_time": 1700000100,
+    "current_node": "assistant-message",
+    "mapping": {
+      "user-message": {
+        "id": "user-message",
+        "parent": null,
+        "message": {
+          "id": "user-message",
+          "author": { "role": "user", "name": null },
+          "create_time": 1700000000,
+          "content": {
+            "content_type": "multimodal_text",
+            "parts": [
+              "Please inspect these fixtures.",
+              { "content_type": "image_asset_pointer", "asset_pointer": "file-service://file_fixture_image0001", "width": 320, "height": 180 }
+            ]
+          },
+          "metadata": {
+            "attachments": [
+              { "id": "file_fixture_document0001", "name": "README.md", "mime_type": "text/markdown", "size": 71 },
+              { "id": "file_fixture_manifest0001", "name": "manifest.toml", "mime_type": "application/toml", "size": 43 },
+              { "id": "file_fixture_missing0001", "name": "Roadmap.pdf", "mime_type": "application/pdf", "size": 999 }
+            ]
+          }
+        }
+      },
+      "assistant-message": {
+        "id": "assistant-message",
+        "parent": "user-message",
+        "message": {
+          "id": "assistant-message",
+          "author": { "role": "assistant", "name": null },
+          "create_time": 1700000100,
+          "content": {
+            "content_type": "text",
+            "parts": ["# Fixture response\n\n```python\nprint(\"fixture\")\n```\n\n[Generated notes](sandbox:/mnt/data/generated-notes.txt)"]
+          },
+          "metadata": {
+            "content_references": [
+              { "safe_urls": ["https://example.invalid/reference.png"], "title": "External fixture" }
+            ]
+          }
+        }
+      }
+    }
+  }
+]

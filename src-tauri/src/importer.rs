@@ -7,11 +7,17 @@ use sha1::{Digest, Sha1};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 use url::Url;
 use walkdir::WalkDir;
 
 const MAX_SEARCH_TEXT: usize = 24_000;
 const MAX_ARTIFACT_TEXT: usize = 12_000;
+static FILE_ID_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"file[-_][A-Za-z0-9]{8,}").unwrap());
+static HASH_PREFIX_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-f0-9]{12,20}").unwrap());
+static EXTERNAL_IMAGE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\.(png|jpe?g|webp|gif|avif)(\?|$)").unwrap());
 
 pub trait ProviderImporter {
     fn import(&self, source_dir: &Path, library_dir: &Path) -> AppResult<ImportBuild>;
@@ -511,19 +517,13 @@ fn build_asset_index(source_dir: &Path, files: &[PathBuf]) -> AppResult<AssetInd
         add_asset_key(&mut index, &source_stem, &candidate);
         add_asset_key(&mut index, &candidate.original_name, &candidate);
         add_asset_key(&mut index, &original_stem, &candidate);
-        for item in Regex::new(r"file[-_][A-Za-z0-9]{8,}")
-            .unwrap()
-            .find_iter(&source_name)
-        {
+        for item in FILE_ID_RE.find_iter(&source_name) {
             add_asset_key(&mut index, item.as_str(), &candidate);
         }
-        for item in Regex::new(r"file[-_][A-Za-z0-9]{8,}")
-            .unwrap()
-            .find_iter(&candidate.original_name)
-        {
+        for item in FILE_ID_RE.find_iter(&candidate.original_name) {
             add_asset_key(&mut index, item.as_str(), &candidate);
         }
-        if let Some(prefix) = Regex::new(r"^[a-f0-9]{12,20}").unwrap().find(&source_stem) {
+        if let Some(prefix) = HASH_PREFIX_RE.find(&source_stem) {
             add_asset_key(&mut index, prefix.as_str(), &candidate);
         }
     }
@@ -1017,10 +1017,7 @@ fn extract_assets(
         .unwrap()
         .find_iter(&content_text)
     {
-        if Regex::new(r"\.(png|jpe?g|webp|gif|avif)(\?|$)")
-            .unwrap()
-            .is_match(&item.as_str().to_ascii_lowercase())
-        {
+        if EXTERNAL_IMAGE_RE.is_match(&item.as_str().to_ascii_lowercase()) {
             add_asset(item.as_str(), Some("External image"), None)?;
         }
     }
@@ -1399,28 +1396,25 @@ fn build_conversation_artifacts(
     let mut seen_links = HashSet::new();
     for message in messages.iter().filter(|message| !message.hidden) {
         for (block_index, block) in message.blocks.iter().enumerate() {
-            match block {
-                MessageBlock::Code { language, text } => {
-                    let language = artifact_text(language).to_ascii_lowercase();
-                    artifacts.code.push(CodeArtifact {
-                        base: base_artifact(
-                            stable_id(&format!("code:{}:{}:{block_index}", summary.id, message.id)),
-                            "code",
-                            summary,
-                            message,
-                            &format!("{}\n{}\n{}", summary.title, language, text),
-                        ),
-                        r#type: "code".to_string(),
-                        language: if language.is_empty() {
-                            "text".to_string()
-                        } else {
-                            language
-                        },
-                        preview: truncate_chars(&artifact_text(text), 260),
-                        text: text.clone(),
-                    });
-                }
-                _ => {}
+            if let MessageBlock::Code { language, text } = block {
+                let language = artifact_text(language).to_ascii_lowercase();
+                artifacts.code.push(CodeArtifact {
+                    base: base_artifact(
+                        stable_id(&format!("code:{}:{}:{block_index}", summary.id, message.id)),
+                        "code",
+                        summary,
+                        message,
+                        &format!("{}\n{}\n{}", summary.title, language, text),
+                    ),
+                    r#type: "code".to_string(),
+                    language: if language.is_empty() {
+                        "text".to_string()
+                    } else {
+                        language
+                    },
+                    preview: truncate_chars(&artifact_text(text), 260),
+                    text: text.clone(),
+                });
             }
         }
         for (asset_index, asset) in message.assets.iter().enumerate() {
@@ -1690,6 +1684,26 @@ fn relative_string(base: &Path, file: &Path) -> String {
 mod tests {
     use super::*;
 
+    fn fixture_path(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("tests")
+            .join("fixtures")
+            .join(name)
+    }
+
+    fn temp_library(label: &str) -> PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "chatarchive-{label}-{}-{nonce}",
+            std::process::id()
+        ))
+    }
+
     #[test]
     fn detects_attached_document_files() {
         for name in [
@@ -1710,6 +1724,171 @@ mod tests {
         for name in ["screenshot.png", "README.png", "service.py", "archive.zip"] {
             assert!(!is_document_name(name), "expected non-document: {name}");
         }
+    }
+
+    #[test]
+    fn imports_deterministic_fixture_and_recovers_documents_separately_from_media() {
+        let source = fixture_path("openai-export");
+        let library = temp_library("fixture-import");
+        fs::create_dir_all(library.join("archives")).unwrap();
+        let build = OpenAiImporter.import(&source, &library).unwrap();
+
+        assert_eq!(build.index.totals.conversations, 1);
+        assert_eq!(build.artifacts.code.len(), 1);
+        assert_eq!(build.artifacts.assets.len(), 2);
+        assert_eq!(build.artifacts.documents.len(), 4);
+        assert_eq!(
+            build
+                .artifacts
+                .assets
+                .iter()
+                .filter(|item| item.kind == "missing")
+                .count(),
+            0
+        );
+        assert_eq!(
+            build
+                .artifacts
+                .documents
+                .iter()
+                .filter(|item| item
+                    .url
+                    .as_deref()
+                    .is_some_and(|url| url.starts_with("local-file://")))
+                .count(),
+            3
+        );
+        assert_eq!(
+            build
+                .artifacts
+                .documents
+                .iter()
+                .filter(|item| item.url.as_deref() == Some(""))
+                .count(),
+            1
+        );
+
+        let readme = build
+            .artifacts
+            .documents
+            .iter()
+            .find(|item| item.title == "README.md")
+            .unwrap();
+        let recovered = PathBuf::from(
+            readme
+                .url
+                .as_deref()
+                .unwrap()
+                .trim_start_matches("local-file://"),
+        );
+        assert_eq!(
+            fs::read(source.join("file_fixture_document0001.dat")).unwrap(),
+            fs::read(recovered).unwrap()
+        );
+        assert!(!readme.url.as_deref().unwrap().contains(".staging"));
+
+        let _ = fs::remove_dir_all(library);
+    }
+
+    #[test]
+    fn fixture_artifact_ids_are_stable_and_sqlite_totals_reconcile_without_losing_state() {
+        let source = fixture_path("openai-export");
+        let first_library = temp_library("stable-a");
+        let second_library = temp_library("stable-b");
+        fs::create_dir_all(first_library.join("archives")).unwrap();
+        fs::create_dir_all(second_library.join("archives")).unwrap();
+        let first = OpenAiImporter.import(&source, &first_library).unwrap();
+        let second = OpenAiImporter.import(&source, &second_library).unwrap();
+        assert_eq!(
+            first
+                .artifacts
+                .code
+                .iter()
+                .map(|item| &item.base.id)
+                .collect::<Vec<_>>(),
+            second
+                .artifacts
+                .code
+                .iter()
+                .map(|item| &item.base.id)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            first
+                .artifacts
+                .documents
+                .iter()
+                .map(|item| &item.base.id)
+                .collect::<Vec<_>>(),
+            second
+                .artifacts
+                .documents
+                .iter()
+                .map(|item| &item.base.id)
+                .collect::<Vec<_>>()
+        );
+
+        let mut conn = crate::db::open_db(&first_library).unwrap();
+        crate::db::migrate(&conn).unwrap();
+        let mut state = ViewerState::default();
+        state.favorites.insert(
+            "fixture-conversation".to_string(),
+            ConversationBookmark {
+                conversation_id: "fixture-conversation".to_string(),
+                created_at: 1,
+            },
+        );
+        crate::db::replace_viewer_state(&mut conn, &state).unwrap();
+        crate::db::replace_archive(
+            &mut conn,
+            &first.archive_id,
+            &source,
+            &first.archive_path,
+            &first.manifest_path,
+            &first.index,
+            &first.artifacts,
+            &first.conversations,
+        )
+        .unwrap();
+
+        for (table, expected) in [
+            ("code_artifacts", first.artifacts.code.len()),
+            ("asset_artifacts", first.artifacts.assets.len()),
+            ("document_artifacts", first.artifacts.documents.len()),
+            ("link_artifacts", first.artifacts.links.len()),
+        ] {
+            let count: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(
+                count as usize, expected,
+                "SQLite count mismatch for {table}"
+            );
+        }
+        assert!(crate::db::load_viewer_state(&conn)
+            .unwrap()
+            .favorites
+            .contains_key("fixture-conversation"));
+
+        let _ = fs::remove_dir_all(first_library);
+        let _ = fs::remove_dir_all(second_library);
+    }
+
+    #[test]
+    fn malformed_export_fails_without_removing_existing_archive() {
+        let source = fixture_path("malformed-export");
+        let library = temp_library("malformed");
+        let sentinel = library
+            .join("archives")
+            .join("existing")
+            .join("sentinel.txt");
+        fs::create_dir_all(sentinel.parent().unwrap()).unwrap();
+        fs::write(&sentinel, "keep").unwrap();
+        assert!(OpenAiImporter.import(&source, &library).is_err());
+        assert_eq!(fs::read_to_string(&sentinel).unwrap(), "keep");
+        let _ = fs::remove_dir_all(library);
     }
 
     #[test]

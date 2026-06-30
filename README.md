@@ -29,6 +29,8 @@ This project started as a static personal archive reader, but the direction is b
 
 The currently verified archive contains 733 conversations, 29,861 visible messages, 36,835 code artifacts, 5,823 image assets, 1,624 attached documents, and 8,838 link artifacts. Of the image assets, 5,320 resolve locally, 490 are external, and 13 remain unresolved. Of the documents, 724 payloads are recoverable from the export and 900 remain metadata-only pointers because their source blobs are absent. These are live-library figures from the June 30, 2026 import and will change when another export is ingested.
 
+> **Release status:** Phase 1 and Phase 2A-2C are implemented, but Stage 3 is intentionally blocked by the Phase 2 release gate. The functional, data-integrity, accessibility, native-import, and packaging checks pass; the Windows installer lifecycle must be rerun from a known installation baseline before the gate can be cleared. See the [Phase 2 QA report](docs/Phase2-QA-Report.md) for results, hashes, performance baselines, and the exact blocker.
+
 ## Why This Exists
 
 Most chat exports are useful but awkward. They preserve data, not continuity. This project tries to make exported conversations browsable, inspectable, and reusable:
@@ -73,6 +75,44 @@ Build the Windows desktop bundle:
 ```powershell
 npm run tauri:build
 ```
+
+## Testing And Release Gate
+
+The repository includes permanent regression coverage for the React explorer logic, rendered desktop/mobile behavior, Rust import transactions, real-export reconciliation, native persistence, production privacy, and Windows installers.
+
+```powershell
+# Fast unit suite
+npm test
+
+# Rendered UI, responsive layout, keyboard, and accessibility checks
+npm run test:ui
+
+# Rust importer/database tests
+npm run test:rust
+
+# Destructive real-export audit against D:\Chat\.qa\library
+npm run test:native
+
+# MSI and NSIS lifecycle audit
+npm run test:installer
+
+# Complete Phase 2 release gate
+npm run qa:phase2
+```
+
+`test:native` mirrors the configured live library into `D:\Chat\.qa\library` before destructive testing. It does not use `A:\ChatArchive` as an import destination. The real export and generated QA workspace remain outside Git; committed fixtures are synthetic.
+
+The June 30, 2026 audit currently records:
+
+- 4 Vitest tests passed.
+- 9 Playwright tests passed at 1920x1080, 1366x768, and 390x844, with no serious or critical automated accessibility violations in the tested flow.
+- 6 active Rust tests passed; the opt-in real-export smoke is covered by the isolated native audit.
+- SQLite and artifact indexes reconciled exactly with zero orphaned source IDs.
+- A representative recovered document matched its source `.dat` blob byte-for-byte.
+- Production frontend, Tauri, MSI, NSIS, Clippy, formatting, and private-payload checks passed.
+- The installer-state restoration check failed, so `qa:phase2` is not yet a green release gate.
+
+Do not run the installer lifecycle casually on a workstation with an installation you cannot reconstruct. The hardened runner snapshots registered package information and installer payloads, but a known baseline is still required for a meaningful restoration assertion.
 
 The app will ask for a library folder. A normal library layout looks like:
 
@@ -131,9 +171,11 @@ D:\Chat
 │   ├── capabilities/                  # Tauri permissions
 │   └── tauri.conf.json
 ├── scripts/
-│   └── ingest-openai-history.js       # Legacy static OpenAI normalizer
+│   ├── ingest-openai-history.js       # Legacy static OpenAI normalizer
+│   └── qa/                            # Native, installer, and release-gate runners
 ├── src/
 │   ├── App.tsx                        # Archive reader UI
+│   ├── artifactLogic.ts               # Pure explorer filtering/facet/selection logic
 │   ├── archiveApi.ts                  # Tauri command/static fetch adapter
 │   ├── main.tsx                       # React entrypoint
 │   ├── styles.css                     # App styling
@@ -149,6 +191,13 @@ D:\Chat
 │   │   └── conversations/             # One normalized JSON file per conversation
 │   ├── archive-assets/                # Legacy copied local image assets
 │   └── archive-documents/             # Legacy copied document payloads
+├── tests/
+│   ├── e2e/                           # Playwright UI/accessibility/layout coverage
+│   ├── fixtures/                      # Synthetic static and OpenAI export fixtures
+│   └── unit/                          # Vitest explorer logic coverage
+├── docs/
+│   ├── Phase 2-ArtifactExtraction.md  # Phase 2A-2D implementation roadmap
+│   └── Phase2-QA-Report.md            # Current release-gate evidence and verdict
 ├── openai-history/                    # Source export folder, local/private
 └── dist/                              # Production build output
 ```
@@ -302,13 +351,13 @@ The React UI supports two data paths. In the desktop app it uses Tauri commands 
 
 ## Suggested Next Milestones
 
-1. Add the next provider adapter behind the existing `ProviderImporter` boundary.
-2. Add a small fixture-based test set for normalized archive output.
-3. Add a privacy scrubber before broader sharing.
-4. Add provider-neutral import documentation.
-5. Add a local-model handoff exporter for one selected conversation.
-6. Add Link Explorer on top of the existing Code, Document, and Asset explorers.
+1. Re-establish a known Windows installation baseline and clear the complete Phase 2 release gate.
+2. Complete the static/in-app-browser compatibility smoke and record it in the QA report.
+3. Add Phase 2D Link Explorer on top of the existing link artifact index.
+4. Add a privacy scrubber before broader sharing.
+5. Add the next provider adapter behind the existing `ProviderImporter` boundary.
+6. Add provider-neutral import documentation and a local-model handoff exporter.
 
 ## Status
 
-Phase 1 and Phase 2A–2C are implemented. ChatArchive is useful today as a durable local OpenAI archive with SQLite-backed viewer state, sharded-export ingestion, `.dat` attachment recovery, rich conversation search, code and diagram rendering, and dedicated Code, Document, and Asset explorers. Phase 2D Link Explorer, provider adapters, curation, privacy/redaction, and deeper retrieval remain future work.
+Phase 1 and Phase 2A-2C are implemented. ChatArchive is useful today as a durable local OpenAI archive with SQLite-backed viewer state, sharded-export ingestion, `.dat` attachment recovery, rich conversation search, code and diagram rendering, and dedicated Code, Document, and Asset explorers. The extensive Phase 2 regression harness is now part of the repository, but its current verdict keeps Stage 3 blocked until installer-state restoration is proven from a known baseline. Phase 2D Link Explorer, provider adapters, curation, privacy/redaction, and deeper retrieval remain future work.

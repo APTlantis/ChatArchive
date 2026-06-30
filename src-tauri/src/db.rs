@@ -255,6 +255,7 @@ pub fn get_meta<T: for<'de> serde::Deserialize<'de>>(
     .transpose()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn replace_archive(
     conn: &mut Connection,
     archive_id: &str,
