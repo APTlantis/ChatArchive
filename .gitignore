@@ -1,6 +1,8 @@
 /dist/
 /node_modules/
+/openai-export/
 /openai-history/
 /public/archive-assets/
 /public/archive-data/
 /src-tauri/target/
+/.tmp-import-smoke/

@@ -18,7 +18,7 @@ If we end up needing to save some space for some reason or there's issues we can
 
 # Phase 1.5: Tauri Durable Archive Foundation
 
-**Status:** Implemented as the new product foundation. The app now has a Tauri 2 shell, a Rust OpenAI importer, a user-selected filesystem library, SQLite-backed archive/user-state metadata, one-time `chatArchive.viewerState.v1` migration, and Tauri command adapters for the React reader. Phase 2 explorer work should build against these Tauri/SQLite boundaries.
+**Status:** Implemented as the new product foundation. The app now has a Tauri 2 shell, a Rust OpenAI importer, a user-selected filesystem library, SQLite-backed archive/user-state metadata, one-time `chatArchive.viewerState.v1` migration, and Tauri command adapters for the React reader. The importer supports both legacy `conversations.json` exports and current OpenAI sharded `conversations-*.json` exports with `.dat` asset blobs mapped through `conversation_asset_file_names.json`. Phase 2 explorer work should build against these Tauri/SQLite boundaries.
 
 ## Summary
 
@@ -44,6 +44,9 @@ References used for feasibility: Tauri v2 filesystem base directories and path A
   └── settings.json
   ```
 - Ported the current OpenAI ingest path to Rust.
+  - Supports legacy `conversations.json` and current `conversations-*.json` shards.
+  - Preserves raw non-attachment export files under `raw/`.
+  - Resolves current `.dat` attachment blobs through `conversation_asset_file_names.json` where possible.
   - Preserve normalized frontend data shapes where practical: conversations, messages, blocks, assets, references, artifacts.
   - Keep copied assets and normalized JSON on disk.
   - Insert conversation, message, artifact, asset, and search metadata into SQLite during import.
@@ -119,10 +122,13 @@ References used for feasibility: Tauri v2 filesystem base directories and path A
   - Tauri desktop dev run
   - Tauri production build for Windows first
 - Import checks:
-  - Import current OpenAI export.
+  - Import current OpenAI export, including sharded `conversations-*.json` and `.dat` asset blobs.
   - Verify totals match the existing known baseline: 448 conversations, 26,374 visible messages, 3,315 copied assets, 25,006 code artifacts.
   - Verify copied assets render from the library folder.
   - Verify Mermaid, Prism, image lightbox, raw toggle, copy code, and Markdown export still work.
+- Current export smoke checks:
+  - `cargo test loads_sharded_openai_export`
+  - `cargo test imports_real_openai_export_shape -- --ignored`
 - State migration checks:
   - Seed `chatArchive.viewerState.v1`.
   - Launch Tauri app.

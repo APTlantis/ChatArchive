@@ -8,11 +8,12 @@ This project started as a static personal archive reader, but the direction is b
 
 - Runs as a Tauri desktop app on top of the existing Vite/React UI.
 - Lets the user choose a visible `ChatArchive/` library folder for backup clarity.
-- Imports a ChatGPT/OpenAI export through the Rust backend.
+- Imports legacy and current ChatGPT/OpenAI exports through the Rust backend.
+- Supports both single-file `conversations.json` exports and current sharded `conversations-*.json` exports.
 - Normalizes conversation trees into ordered message threads.
 - Separates visible chat messages from hidden/raw system, tool, and metadata messages.
 - Extracts Markdown text, fenced code blocks, execution output, citations, references, and image pointers.
-- Copies matching local image assets into the selected library folder.
+- Copies matching local image assets into the selected library folder, including current `.dat` attachment blobs mapped through `conversation_asset_file_names.json`.
 - Tracks unresolved asset pointers and external image URLs in durable archive metadata.
 - Writes normalized per-conversation JSON on disk.
 - Stores archive, conversation, message, artifact, search, tag, bookmark, favorite, pin, read-state, recent-view, and scroll metadata in SQLite.
@@ -41,7 +42,7 @@ Most chat exports are useful but awkward. They preserve data, not continuity. Th
 - Node.js
 - npm
 - Rust toolchain compatible with Tauri 2
-- A ChatGPT/OpenAI export folder containing `conversations.json`
+- A ChatGPT/OpenAI export folder containing either `conversations.json` or sharded `conversations-*.json` files
 
 The app is now a Tauri 2 + React + TypeScript + Rust project.
 
@@ -96,7 +97,7 @@ npm run preview
 
 ## Using A Different Export Location
 
-In the Tauri app, choose the OpenAI export folder from the import dialog. The folder should contain `conversations.json`.
+In the Tauri app, choose the OpenAI export folder from the import dialog. The folder should contain either a legacy `conversations.json` file or current `conversations-*.json` shards. Current OpenAI exports may also include many `.dat` files; the Rust importer uses `conversation_asset_file_names.json` to recover original filenames and copy matching local assets into the selected library.
 
 For the legacy Node ingest script, the default source is `D:\Chat\openai-history`. You can point it at another OpenAI export folder with `OPENAI_HISTORY_DIR`:
 
@@ -166,7 +167,7 @@ This normalized layer is what makes future provider support realistic. Gemini, C
 
 - Only OpenAI/ChatGPT export ingestion is implemented.
 - Markdown rendering is intentionally lightweight and does not cover every Markdown extension.
-- Asset recovery is best-effort. Some OpenAI pointers cannot be matched to local files, but unresolved pointers are recorded.
+- Asset recovery is best-effort. Current OpenAI `.dat` blobs are matched through `conversation_asset_file_names.json` where possible; pointers that still cannot be matched are recorded as unresolved.
 - Audio and video payloads are skipped by the current asset extractor.
 - Search and listing are moving behind Tauri/SQLite. Some rich filtering still reuses the existing frontend filter layer over the loaded index while Phase 2 explorer views are built.
 - Prism and Mermaid are bundled locally, so the production build is intentionally larger than a CDN-based version.
@@ -182,7 +183,7 @@ Before publishing or sharing:
 
 - Review `public/archive-data`.
 - Review `public/archive-assets`.
-- Consider deleting or excluding `openai-history`.
+- Consider deleting or excluding private source exports such as `openai-history` or `openai-export`.
 - Consider adding a future redaction pass for secrets, emails, paths, API keys, and personal identifiers.
 
 ## Roadmap
