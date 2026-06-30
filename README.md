@@ -12,20 +12,22 @@ This project started as a static personal archive reader, but the direction is b
 - Supports both single-file `conversations.json` exports and current sharded `conversations-*.json` exports.
 - Normalizes conversation trees into ordered message threads.
 - Separates visible chat messages from hidden/raw system, tool, and metadata messages.
-- Extracts Markdown text, fenced code blocks, execution output, citations, references, and image pointers.
-- Copies matching local image assets into the selected library folder, including current `.dat` attachment blobs mapped through `conversation_asset_file_names.json`.
+- Extracts Markdown text, fenced code blocks, execution output, citations, references, image pointers, uploaded documents, and OpenAI-produced download links.
+- Resolves matching image and document payloads from current `.dat` export blobs, restores attachment filenames, and stores documents separately from media assets.
 - Tracks unresolved asset pointers and external image URLs in durable archive metadata.
 - Writes normalized per-conversation JSON on disk.
 - Stores archive, conversation, message, artifact, search, tag, bookmark, favorite, pin, read-state, recent-view, and scroll metadata in SQLite.
-- Builds dedicated artifact records for code, assets, document-like Markdown, and links.
+- Builds dedicated artifact records for code, image assets, attached documents, and links.
 - Provides a React reader with search, month grouping, conversation outline, image lightbox, code copy, all-code copy, raw-message toggle, and Markdown export.
 - Highlights code blocks with a locally bundled Prism build; no CDN or external runtime call is needed.
 - Renders Mermaid and ZenUML fenced diagrams from local npm packages, with source fallback when a diagram cannot be parsed.
 - Opens to a local dashboard with archive totals, first/latest chat dates, code block counts, unresolved asset counts, recently viewed conversations, favorites, pins, and read/unread totals.
 - Supports richer client-side search with phrases, regex mode, field chips, typed operators such as `type:code`, `language:python`, `type:document`, `type:link`, `domain:github.com`, date ranges, and conversation length filters.
+- Includes three-pane Code, Document, and Asset explorers with independent search, facets, bounded result lists, previews, export/copy actions, and source-message navigation.
+- Previews recovered Markdown, JSON, TOML, YAML, CSV, XML, HTML, RST, and text attachments directly. PDF and Office files remain byte-faithful downloadable artifacts.
 - Migrates existing browser `localStorage` viewer state from `chatArchive.viewerState.v1` once, then treats SQLite as authoritative.
 
-The current local archive build contains 448 conversations, 26,374 visible messages, 9,584 hidden/raw messages, 3,315 copied local assets, 25,006 code artifacts, 10,297 document artifacts, and 8,096 link artifacts. Those numbers come from the generated data currently in this working tree and will change whenever a different export is ingested.
+The currently verified archive contains 733 conversations, 29,861 visible messages, 36,835 code artifacts, 5,823 image assets, 1,624 attached documents, and 8,838 link artifacts. Of the image assets, 5,320 resolve locally, 490 are external, and 13 remain unresolved. Of the documents, 724 payloads are recoverable from the export and 900 remain metadata-only pointers because their source blobs are absent. These are live-library figures from the June 30, 2026 import and will change when another export is ingested.
 
 ## Why This Exists
 
@@ -81,6 +83,7 @@ ChatArchive/
 │       ├── raw/
 │       ├── conversations/
 │       ├── assets/
+│       ├── documents/
 │       ├── exports/
 │       └── manifest.json
 ├── chatarchive.db
@@ -97,7 +100,7 @@ npm run preview
 
 ## Using A Different Export Location
 
-In the Tauri app, choose the OpenAI export folder from the import dialog. The folder should contain either a legacy `conversations.json` file or current `conversations-*.json` shards. Current OpenAI exports may also include many `.dat` files; the Rust importer uses `conversation_asset_file_names.json` to recover original filenames and copy matching local assets into the selected library.
+In the Tauri app, choose the OpenAI export folder from the import dialog. The folder should contain either a legacy `conversations.json` file or current `conversations-*.json` shards. Current OpenAI exports may also include many `.dat` files. The Rust importer indexes those blobs by file ID, consults `conversation_asset_file_names.json` and attachment metadata for original names, and copies recoverable images and documents into separate archive folders.
 
 For the legacy Node ingest script, the default source is `D:\Chat\openai-history`. You can point it at another OpenAI export folder with `OPENAI_HISTORY_DIR`:
 
@@ -111,6 +114,7 @@ The legacy static archive is written into:
 ```text
 public/archive-data/
 public/archive-assets/
+public/archive-documents/
 ```
 
 ## Project Layout
@@ -143,7 +147,8 @@ D:\Chat
 │   │   ├── artifacts.json             # Legacy static artifact index
 │   │   ├── assets-manifest.json       # Copied, external, and missing asset records
 │   │   └── conversations/             # One normalized JSON file per conversation
-│   └── archive-assets/                # Legacy copied local image assets
+│   ├── archive-assets/                # Legacy copied local image assets
+│   └── archive-documents/             # Legacy copied document payloads
 ├── openai-history/                    # Source export folder, local/private
 └── dist/                              # Production build output
 ```
@@ -155,9 +160,9 @@ The app reads a small normalized model instead of rendering the raw provider exp
 - `ArchiveIndex` contains generated metadata, totals, and conversation summaries.
 - `ConversationSummary` powers search, grouping, counts, snippets, and selection.
 - `ConversationFile` contains a full normalized conversation and its messages.
-- `ArchiveMessage` stores role, author, time, content type, extracted blocks, assets, references, hidden/raw status, and original content type.
+- `ArchiveMessage` stores role, author, time, content type, extracted blocks, media assets, document attachments, references, hidden/raw status, and original content type.
 - `MessageBlock` supports Markdown, code, execution output, and notices.
-- `ArchiveAsset` tracks local, external, and missing assets.
+- `ArchiveAsset` tracks local, external, and missing media. Document attachment records reuse the same resolved-file shape but live in a separate document collection and folder.
 - `ArtifactIndex`/SQLite artifact tables power exact language, code, asset, document, and link search without loading every conversation file.
 - SQLite owns user state: favorites, pins, read/unread status, recently viewed conversations, message bookmarks, tags, saved searches, and scroll positions.
 
@@ -167,9 +172,10 @@ This normalized layer is what makes future provider support realistic. Gemini, C
 
 - Only OpenAI/ChatGPT export ingestion is implemented.
 - Markdown rendering is intentionally lightweight and does not cover every Markdown extension.
-- Asset recovery is best-effort. Current OpenAI `.dat` blobs are matched through `conversation_asset_file_names.json` where possible; pointers that still cannot be matched are recorded as unresolved.
+- Image and document recovery is best-effort. The importer matches `.dat` blobs by file ID and recovered filename; pointers whose payloads are absent from the provider export remain diagnostic records.
+- Text-based documents can be previewed in-app. PDF, DOCX, PPTX, and other binary documents are preserved for original-file export but are not rendered inline.
 - Audio and video payloads are skipped by the current asset extractor.
-- Search and listing are moving behind Tauri/SQLite. Some rich filtering still reuses the existing frontend filter layer over the loaded index while Phase 2 explorer views are built.
+- Explorer listing commands are backed by Tauri and SQLite. Some conversation-level rich filtering still reuses the frontend filter layer over the loaded archive index.
 - Prism and Mermaid are bundled locally, so the production build is intentionally larger than a CDN-based version.
 - Mermaid diagram rendering is limited to fenced `mermaid`, `mmd`, and `zenuml` code blocks.
 - There is no built-in privacy scrubber yet. Treat generated archive files as sensitive.
@@ -183,6 +189,7 @@ Before publishing or sharing:
 
 - Review `public/archive-data`.
 - Review `public/archive-assets`.
+- Review `public/archive-documents`.
 - Consider deleting or excluding private source exports such as `openai-history` or `openai-export`.
 - Consider adding a future redaction pass for secrets, emails, paths, API keys, and personal identifiers.
 
@@ -248,9 +255,8 @@ Make the archive useful as a personal knowledge base, not just a viewer.
 
 Chat platforms often make media export awkward. This framework can do more because it controls the local asset layer.
 
-- Better pointer matching for OpenAI image assets.
-- Support downloaded files, PDFs, audio transcripts, and generated images.
-- Asset deduplication by hash.
+- Hash-based deduplication for recovered images and documents.
+- Inline PDF/Office previews where a local renderer can be bundled safely.
 - Attachment manifests with original names, content types, dimensions, and source messages.
 - Missing-asset repair tools.
 - Optional thumbnail generation.
@@ -290,19 +296,19 @@ Once conversations are normalized, the archive can support workflows that platfo
 
 ## Development Notes
 
-The ingest script is deliberately plain Node.js so it can run before the React app exists or without a server. It reads the provider export, writes static JSON, copies assets, and records anything it cannot resolve.
+The legacy ingest script is deliberately plain Node.js so it can normalize an export without the desktop shell. It writes static JSON, copies image and document payloads, and records anything it cannot resolve.
 
-The UI is deliberately static. It fetches JSON from `/archive-data`, renders conversations in the browser, and does not require a backend service. That keeps the archive portable and makes it easier to host, zip, back up, or run locally.
+The React UI supports two data paths. In the desktop app it uses Tauri commands and SQLite-backed indexes; in static development mode it can still fetch generated JSON from `/archive-data`. Production Tauri builds exclude private `public/archive-data`, `public/archive-assets`, and `public/archive-documents` payloads unless static inclusion is explicitly enabled.
 
 ## Suggested Next Milestones
 
-1. Split the current OpenAI ingest logic into a provider adapter shape.
+1. Add the next provider adapter behind the existing `ProviderImporter` boundary.
 2. Add a small fixture-based test set for normalized archive output.
 3. Add a privacy scrubber before broader sharing.
 4. Add provider-neutral import documentation.
 5. Add a local-model handoff exporter for one selected conversation.
-6. Add Code Explorer, Document Explorer, Asset Explorer, and Link Explorer views on top of the artifact index.
+6. Add Link Explorer on top of the existing Code, Document, and Asset explorers.
 
 ## Status
 
-Phase 1 archive viewer maturity is complete. The app is useful today for local OpenAI export browsing, dashboard review, Prism-highlighted code reading, local Mermaid/ZenUML diagram rendering, richer search/filtering, exact artifact-backed operators, and browser-local navigation state, with a clear path toward Phase 2 explorer views.
+Phase 1 and Phase 2A–2C are implemented. ChatArchive is useful today as a durable local OpenAI archive with SQLite-backed viewer state, sharded-export ingestion, `.dat` attachment recovery, rich conversation search, code and diagram rendering, and dedicated Code, Document, and Asset explorers. Phase 2D Link Explorer, provider adapters, curation, privacy/redaction, and deeper retrieval remain future work.
