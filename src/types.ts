@@ -160,6 +160,8 @@ export interface DocumentArtifact extends BaseArtifact {
   documentType: string;
   title: string;
   preview: string;
+  original?: string;
+  url?: string;
 }
 
 export interface LinkArtifact extends BaseArtifact {

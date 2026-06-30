@@ -170,6 +170,10 @@ pub struct DocumentArtifact {
     pub document_type: String,
     pub title: String,
     pub preview: String,
+    #[serde(default)]
+    pub original: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

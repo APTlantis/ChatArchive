@@ -458,6 +458,109 @@ pub fn list_code_artifacts(conn: &Connection) -> AppResult<Vec<CodeArtifact>> {
     Ok(artifacts)
 }
 
+pub fn list_document_artifacts(conn: &Connection) -> AppResult<Vec<DocumentArtifact>> {
+    list_artifact_json(
+        conn,
+        "document_artifacts",
+        "document_type COLLATE NOCASE, id",
+    )
+}
+
+pub fn list_asset_artifacts(conn: &Connection) -> AppResult<Vec<AssetArtifact>> {
+    list_artifact_json(conn, "asset_artifacts", "kind COLLATE NOCASE, id")
+}
+
+fn list_artifact_json<T: serde::de::DeserializeOwned>(
+    conn: &Connection,
+    table: &str,
+    order_by: &str,
+) -> AppResult<Vec<T>> {
+    let sql = format!("SELECT json FROM {table} ORDER BY {order_by}");
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|err| format!("Could not prepare artifact query: {err}"))?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|err| format!("Could not query artifacts: {err}"))?;
+    rows.map(|row| {
+        let raw = row.map_err(|err| format!("Could not read artifact row: {err}"))?;
+        serde_json::from_str(&raw).map_err(|err| format!("Could not parse artifact JSON: {err}"))
+    })
+    .collect()
+}
+
+pub fn document_artifact_content(conn: &Connection, artifact_id: &str) -> AppResult<String> {
+    let artifact = load_document_artifact(conn, artifact_id)?;
+    if let Some(url) = artifact.url.as_deref() {
+        if let Some(raw_path) = url.strip_prefix("local-file://") {
+            let path = PathBuf::from(raw_path);
+            let extension = path
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if matches!(
+                extension.as_str(),
+                "md" | "markdown" | "txt" | "rst" | "html" | "htm"
+            ) {
+                return fs::read_to_string(&path).map_err(|err| {
+                    format!("Could not read attached document {}: {err}", path.display())
+                });
+            }
+            return Ok(format!(
+                "# {}\n\nThis is an attached **{}** document. Use **Export original** to copy the source file without conversion.",
+                artifact.title,
+                extension.to_ascii_uppercase()
+            ));
+        }
+        return Ok(format!(
+            "# {}\n\nThe original document is unavailable in this archive.\n\nPointer: `{}`",
+            artifact.title,
+            artifact.original.as_deref().unwrap_or(url)
+        ));
+    }
+
+    // Compatibility path for document artifacts created by the earlier
+    // message-content classifier.
+    let message_json: String = conn
+        .query_row(
+            "SELECT json FROM messages WHERE conversation_id = ?1 AND id = ?2",
+            params![artifact.base.conversation_id, artifact.base.message_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|err| format!("Could not query document source message: {err}"))?
+        .ok_or_else(|| "Document source message is no longer available".to_string())?;
+    let message: ArchiveMessage = serde_json::from_str(&message_json)
+        .map_err(|err| format!("Could not parse document source message: {err}"))?;
+    for (block_index, block) in message.blocks.iter().enumerate() {
+        if let MessageBlock::Markdown { text } = block {
+            let candidate_id = crate::importer::stable_id(&format!(
+                "document:{}:{}:{block_index}",
+                artifact.base.conversation_id, artifact.base.message_id
+            ));
+            if candidate_id == artifact_id {
+                return Ok(text.clone());
+            }
+        }
+    }
+    Err("The indexed document block could not be found in its source message".to_string())
+}
+
+pub fn load_document_artifact(conn: &Connection, artifact_id: &str) -> AppResult<DocumentArtifact> {
+    let artifact_json: String = conn
+        .query_row(
+            "SELECT json FROM document_artifacts WHERE id = ?1",
+            params![artifact_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|err| format!("Could not query document artifact: {err}"))?
+        .ok_or_else(|| format!("Document artifact not found: {artifact_id}"))?;
+    serde_json::from_str(&artifact_json)
+        .map_err(|err| format!("Could not parse document artifact: {err}"))
+}
+
 pub fn load_conversation(
     library: &Path,
     conn: &Connection,

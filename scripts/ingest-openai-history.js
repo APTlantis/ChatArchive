@@ -118,7 +118,7 @@ function assetKeysFromPointer(pointer) {
   const fileIds = text.match(/file[-_][A-Za-z0-9]+/g) || [];
   for (const id of fileIds) keys.add(id);
 
-  const base = path.basename(text.replace(/^file-service:\/\//, '').replace(/^sediment:\/\//, ''));
+  const base = path.basename(text.replace(/^file-service:\/\//, '').replace(/^sediment:\/\//, '').replace(/^sandbox:\/mnt\/data\//, ''));
   if (base) {
     keys.add(base);
     const noExt = base.replace(/\.[a-z0-9]+$/i, '');
@@ -283,12 +283,18 @@ function classifyDocument(text, conversationTitle) {
   return 'Document';
 }
 
-function looksDocumentLike(block, conversationTitle) {
-  if (block.type !== 'markdown') return false;
-  const text = block.text || '';
-  if (text.length >= 900) return true;
-  const sample = `${conversationTitle}\n${text}`.toLowerCase();
-  return /\breadme\b|release\s+notes?|specification|architecture|standard|runbook|roadmap|requirements?|acceptance criteria/.test(sample);
+function isDocumentAsset(asset) {
+  const sample = `${asset.label}\n${asset.original}\n${asset.url}`.toLowerCase();
+  if (/\.(png|jpe?g|webp|gif|avif|svg|ico|mp[34]|wav|zip|gz|7z|rar|json|jsonl|toml|ya?ml|py|js|jsx|ts|tsx|css|go|rs|java|kt|sh|ps1|bat)(?:$|[?#])/.test(sample)) return false;
+  return /\.(md|markdown|txt|rst|pdf|doc|docx|odt|rtf|html?|ppt|pptx)(?:$|[?#])/.test(sample)
+    || /(?:^|[/\\_-])(readme|changelog|roadmap|license)(?:$|[/\\_.-])/.test(sample);
+}
+
+function documentAssetTitle(asset) {
+  if (asset.label && !/asset_pointer|Attached file|Download|Asset/.test(asset.label)) return asset.label;
+  const original = asset.original.replace(/^file-service:\/\//, '').replace(/^sandbox:\/mnt\/data\//, '');
+  if (original && !original.startsWith('file-')) return path.basename(original);
+  return path.basename(asset.url).replace(/^file-[A-Za-z0-9]+-/, '') || 'Document';
 }
 
 function buildConversationArtifacts(summary, messages) {
@@ -317,22 +323,6 @@ function buildConversationArtifacts(summary, messages) {
           text: block.text,
           searchText: artifactText(`${summary.title}\n${language}\n${block.text}`),
         });
-      } else if (looksDocumentLike(block, summary.title)) {
-        const title = block.text.match(/^#{1,4}\s+(.+)$/m)?.[1]?.trim() || summary.title;
-        const documentType = classifyDocument(block.text, summary.title);
-        artifacts.documents.push({
-          id: stableId(`document:${summary.id}:${message.id}:${blockIndex}`),
-          type: 'document',
-          conversationId: summary.id,
-          conversationTitle: summary.title,
-          messageId: message.id,
-          createTime: message.createTime,
-          role: message.role,
-          documentType,
-          title,
-          preview: artifactText(block.text).slice(0, 360),
-          searchText: artifactText(`${summary.title}\n${documentType}\n${title}\n${block.text}`),
-        });
       }
     });
 
@@ -353,6 +343,26 @@ function buildConversationArtifacts(summary, messages) {
         height: asset.height,
         searchText: artifactText(`${summary.title}\n${asset.kind}\n${asset.label}\n${asset.original}\n${asset.url}`),
       });
+      if (isDocumentAsset(asset)) {
+        const title = documentAssetTitle(asset);
+        const documentType = classifyDocument(title, summary.title);
+        const origin = message.role === 'user' ? 'Uploaded document' : 'OpenAI download';
+        artifacts.documents.push({
+          id: stableId(`document-file:${summary.id}:${message.id}:${assetIndex}:${asset.id}`),
+          type: 'document',
+          conversationId: summary.id,
+          conversationTitle: summary.title,
+          messageId: message.id,
+          createTime: message.createTime,
+          role: message.role,
+          documentType,
+          title,
+          preview: `${origin} · ${title}`,
+          original: asset.original,
+          url: asset.url,
+          searchText: artifactText(`${summary.title}\n${documentType}\n${title}\n${asset.original}`),
+        });
+      }
     });
 
     const links = [
@@ -415,6 +425,12 @@ function extractAssets(message, assetIndex, copied, manifest) {
     });
   }
 
+  for (const attachment of message?.metadata?.attachments || []) {
+    if (attachment.id) {
+      addAsset(`file-service://${attachment.id}`, attachment.name, attachment);
+    }
+  }
+
   const contentRefs = message?.metadata?.content_references || [];
   for (const ref of contentRefs) {
     if (Array.isArray(ref.safe_urls)) {
@@ -445,6 +461,7 @@ function extractAssets(message, assetIndex, copied, manifest) {
 
   const text = JSON.stringify(message?.content || {});
   for (const match of text.matchAll(/file-service:\/\/[^"\\\s]+/g)) addAsset(match[0], 'Attached file');
+  for (const match of text.matchAll(/sandbox:\/mnt\/data\/([^"\\\s)]+)/g)) addAsset(match[0], match[1]);
   for (const match of text.matchAll(/https?:\/\/[^"\\\s)]+/g)) {
     if (/\.(png|jpe?g|webp|gif|avif)(\?|$)/i.test(match[0])) addAsset(match[0], 'External image');
   }

@@ -584,6 +584,7 @@ fn asset_keys_from_pointer(pointer: &str) -> Vec<String> {
     let cleaned = pointer
         .strip_prefix("file-service://")
         .or_else(|| pointer.strip_prefix("sediment://"))
+        .or_else(|| pointer.strip_prefix("sandbox:/mnt/data/"))
         .unwrap_or(pointer);
     let base = Path::new(cleaned)
         .file_name()
@@ -925,6 +926,21 @@ fn extract_assets(
             Ok(())
         };
 
+    if let Some(attachments) = message
+        .pointer("/metadata/attachments")
+        .and_then(Value::as_array)
+    {
+        for attachment in attachments {
+            if let Some(id) = attachment.get("id").and_then(Value::as_str) {
+                add_asset(
+                    &format!("file-service://{id}"),
+                    attachment.get("name").and_then(Value::as_str),
+                    Some(attachment),
+                )?;
+            }
+        }
+    }
+
     if let Some(content_refs) = message
         .pointer("/metadata/content_references")
         .and_then(Value::as_array)
@@ -1004,6 +1020,18 @@ fn extract_assets(
         .find_iter(&content_text)
     {
         add_asset(item.as_str(), Some("Attached file"), None)?;
+    }
+    for captures in Regex::new(r#"sandbox:/mnt/data/([^"\\\s)]+)"#)
+        .unwrap()
+        .captures_iter(&content_text)
+    {
+        if let Some(pointer) = captures.get(0) {
+            add_asset(
+                pointer.as_str(),
+                captures.get(1).map(|item| item.as_str()),
+                None,
+            )?;
+        }
     }
     for item in Regex::new(r#"https?://[^"\\\s)]+"#)
         .unwrap()
@@ -1308,31 +1336,6 @@ fn build_conversation_artifacts(
                         text: text.clone(),
                     });
                 }
-                MessageBlock::Markdown { text } if looks_document_like(text, &summary.title) => {
-                    let title = Regex::new(r"(?m)^#{1,4}\s+(.+)$")
-                        .unwrap()
-                        .captures(text)
-                        .and_then(|capture| capture.get(1))
-                        .map(|item| item.as_str().trim().to_string())
-                        .unwrap_or_else(|| summary.title.clone());
-                    let document_type = classify_document(text, &summary.title);
-                    artifacts.documents.push(DocumentArtifact {
-                        base: base_artifact(
-                            stable_id(&format!(
-                                "document:{}:{}:{block_index}",
-                                summary.id, message.id
-                            )),
-                            "document",
-                            summary,
-                            message,
-                            &format!("{}\n{}\n{}\n{}", summary.title, document_type, title, text),
-                        ),
-                        r#type: "document".to_string(),
-                        document_type,
-                        title,
-                        preview: truncate_chars(&artifact_text(text), 360),
-                    });
-                }
                 _ => {}
             }
         }
@@ -1359,6 +1362,36 @@ fn build_conversation_artifacts(
                 width: asset.width,
                 height: asset.height,
             });
+            if is_document_asset(asset) {
+                let title = document_asset_title(asset);
+                let document_type = classify_document(&title, &summary.title);
+                let origin = if message.role == "user" {
+                    "Uploaded document"
+                } else {
+                    "OpenAI download"
+                };
+                artifacts.documents.push(DocumentArtifact {
+                    base: base_artifact(
+                        stable_id(&format!(
+                            "document-file:{}:{}:{}:{}",
+                            summary.id, message.id, asset_index, asset.id
+                        )),
+                        "document",
+                        summary,
+                        message,
+                        &format!(
+                            "{}\n{}\n{}\n{}",
+                            summary.title, document_type, title, asset.original
+                        ),
+                    ),
+                    r#type: "document".to_string(),
+                    document_type,
+                    title: title.clone(),
+                    preview: format!("{origin} · {title}"),
+                    original: Some(asset.original.clone()),
+                    url: Some(asset.url.clone()),
+                });
+            }
         }
         let mut links = Vec::new();
         for reference in message
@@ -1414,14 +1447,47 @@ fn base_artifact(
     }
 }
 
-fn looks_document_like(text: &str, conversation_title: &str) -> bool {
-    if text.len() >= 900 {
-        return true;
+fn is_document_asset(asset: &ArchiveAsset) -> bool {
+    let sample = format!("{}\n{}\n{}", asset.label, asset.original, asset.url).to_ascii_lowercase();
+    if Regex::new(r"\.(png|jpe?g|webp|gif|avif|svg|ico|mp[34]|wav|zip|gz|7z|rar|json|jsonl|toml|ya?ml|py|js|jsx|ts|tsx|css|go|rs|java|kt|sh|ps1|bat)(?:$|[?#])")
+        .unwrap()
+        .is_match(&sample)
+    {
+        return false;
     }
-    let sample = format!("{conversation_title}\n{text}").to_ascii_lowercase();
-    Regex::new(r"\breadme\b|release\s+notes?|specification|architecture|standard|runbook|roadmap|requirements?|acceptance criteria")
-    .unwrap()
-    .is_match(&sample)
+    Regex::new(r"\.(md|markdown|txt|rst|pdf|doc|docx|odt|rtf|html?|ppt|pptx)(?:$|[?#])")
+        .unwrap()
+        .is_match(&sample)
+        || Regex::new(r"(?:^|[/\\_-])(readme|changelog|roadmap|license)(?:$|[/\\_.-])")
+            .unwrap()
+            .is_match(&sample)
+}
+
+fn document_asset_title(asset: &ArchiveAsset) -> String {
+    let generic_label = asset.label.contains("asset_pointer")
+        || matches!(asset.label.as_str(), "Attached file" | "Download" | "Asset");
+    if !generic_label && !asset.label.trim().is_empty() {
+        return asset.label.clone();
+    }
+    let candidate = asset
+        .original
+        .strip_prefix("file-service://")
+        .or_else(|| asset.original.strip_prefix("sandbox:/mnt/data/"))
+        .unwrap_or(&asset.original);
+    Path::new(candidate)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.starts_with("file-"))
+        .map(ToString::to_string)
+        .or_else(|| {
+            asset.url.rsplit('/').next().map(|value| {
+                Regex::new(r"^file-[A-Za-z0-9]+-")
+                    .unwrap()
+                    .replace(value, "")
+                    .to_string()
+            })
+        })
+        .unwrap_or_else(|| "Document".to_string())
 }
 
 fn classify_document(text: &str, conversation_title: &str) -> String {
@@ -1494,7 +1560,7 @@ fn archive_id(source_dir: &Path) -> String {
     )
 }
 
-fn stable_id(value: &str) -> String {
+pub(crate) fn stable_id(value: &str) -> String {
     let mut hasher = Sha1::new();
     hasher.update(value.as_bytes());
     format!("{:x}", hasher.finalize())
@@ -1555,6 +1621,50 @@ fn relative_string(base: &Path, file: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detects_attached_document_files() {
+        for name in [
+            "README.md",
+            "architecture.pdf",
+            "Roadmap.docx",
+            "notes.txt",
+            "deck.pptx",
+        ] {
+            let asset = ArchiveAsset {
+                id: "asset".to_string(),
+                kind: "local".to_string(),
+                label: name.to_string(),
+                url: format!("local-file://C:/archive/{name}"),
+                original: format!("file-service://file-test-{name}"),
+                width: None,
+                height: None,
+            };
+            assert!(is_document_asset(&asset), "expected document: {name}");
+        }
+    }
+
+    #[test]
+    fn rejects_non_document_assets() {
+        for name in [
+            "screenshot.png",
+            "README.png",
+            "service.py",
+            "settings.json",
+            "archive.zip",
+        ] {
+            let asset = ArchiveAsset {
+                id: "asset".to_string(),
+                kind: "local".to_string(),
+                label: name.to_string(),
+                url: format!("local-file://C:/archive/{name}"),
+                original: format!("file-service://file-test-{name}"),
+                width: None,
+                height: None,
+            };
+            assert!(!is_document_asset(&asset), "expected non-document: {name}");
+        }
+    }
 
     #[test]
     fn loads_sharded_openai_export() {

@@ -16,9 +16,11 @@ import {
   Download,
   Eye,
   EyeOff,
+  FileText,
   FileImage,
   Home,
   Image as ImageIcon,
+  Images,
   ListFilter,
   PanelLeft,
   Pin,
@@ -30,10 +32,12 @@ import {
 } from 'lucide-react';
 import type {
   ArchiveAsset,
+  AssetArtifact,
   ArtifactIndex,
   ArchiveIndex,
   ArchiveMessage,
   CodeArtifact,
+  DocumentArtifact,
   ConversationFile,
   ConversationSummary,
   MessageBlock,
@@ -50,9 +54,13 @@ import {
   loadArchiveIndex,
   loadArtifactIndex,
   loadCodeArtifacts,
+  loadDocumentArtifacts,
+  loadAssetArtifacts,
+  loadDocumentArtifactContent,
   loadConversation,
   markRead,
   resolveArchiveAssetUrl,
+  exportDocumentMarkdown as exportDocumentMarkdownDesktop,
   saveMessageBookmark,
   saveScrollPosition,
   saveViewerState,
@@ -75,7 +83,7 @@ const DEFAULT_FILTERS: SearchFilters = {
   minMessages: '',
   maxMessages: '',
 };
-type AppView = 'dashboard' | 'conversation' | 'code';
+type AppView = 'dashboard' | 'conversation' | 'code' | 'documents' | 'assets';
 
 function createEmptyViewerState(): ViewerState {
   return {
@@ -484,6 +492,20 @@ function exportCodeSnippet(item: CodeArtifact) {
   URL.revokeObjectURL(url);
 }
 
+async function exportDocumentMarkdown(item: DocumentArtifact, markdown: string) {
+  const desktopPath = await exportDocumentMarkdownDesktop(item, markdown);
+  if (desktopPath) return;
+  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${item.title.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 72) || 'document'}-${item.id}.md`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function plainInline(text: string) {
   return text
     .split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g)
@@ -807,6 +829,8 @@ function Sidebar({
   onToggleCollapsed,
   onHome,
   onCodeExplorer,
+  onDocumentExplorer,
+  onAssetExplorer,
 }: {
   index: ArchiveIndex;
   conversations: ConversationSummary[];
@@ -821,6 +845,8 @@ function Sidebar({
   onToggleCollapsed: () => void;
   onHome: () => void;
   onCodeExplorer: () => void;
+  onDocumentExplorer: () => void;
+  onAssetExplorer: () => void;
 }) {
   function updateFilter<K extends keyof SearchFilters>(key: K, value: SearchFilters[K]) {
     onFilters({ ...filters, [key]: value });
@@ -852,6 +878,14 @@ function Sidebar({
             <button className={activeView === 'code' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onCodeExplorer}>
               <Code2 size={16} />
               Code
+            </button>
+            <button className={activeView === 'documents' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onDocumentExplorer}>
+              <FileText size={16} />
+              Docs
+            </button>
+            <button className={activeView === 'assets' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onAssetExplorer}>
+              <Images size={16} />
+              Assets
             </button>
             <button className="toolbar-button" type="button" onClick={() => onFilters(DEFAULT_FILTERS)}>
               <RotateCcw size={16} />
@@ -1249,6 +1283,230 @@ function CodeExplorer({
   );
 }
 
+function DocumentExplorer({
+  artifacts,
+  onOpenSource,
+}: {
+  artifacts: DocumentArtifact[];
+  onOpenSource: (artifact: DocumentArtifact) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [documentType, setDocumentType] = useState('all');
+  const [selectedId, setSelectedId] = useState('');
+  const [content, setContent] = useState('');
+  const [contentError, setContentError] = useState('');
+  const contentCache = useRef(new Map<string, string>());
+
+  const types = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of artifacts) counts.set(item.documentType, (counts.get(item.documentType) || 0) + 1);
+    return [...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [artifacts]);
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return artifacts
+      .filter((item) => documentType === 'all' || item.documentType === documentType)
+      .filter((item) => !needle || `${item.title}\n${item.documentType}\n${item.preview}\n${item.conversationTitle}\n${item.role}`.toLowerCase().includes(needle))
+      .sort((a, b) => (b.createTime || 0) - (a.createTime || 0));
+  }, [artifacts, documentType, query]);
+
+  const selected = filtered.find((item) => item.id === selectedId) || filtered[0] || null;
+  const visibleRows = filtered.slice(0, 500);
+
+  useEffect(() => {
+    if (!filtered.length) {
+      if (selectedId) setSelectedId('');
+      return;
+    }
+    if (!filtered.some((item) => item.id === selectedId)) setSelectedId(filtered[0].id);
+  }, [filtered, selectedId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selected) {
+      setContent('');
+      setContentError('');
+      return () => {
+        cancelled = true;
+      };
+    }
+    const cached = contentCache.current.get(selected.id);
+    if (cached !== undefined) {
+      setContent(cached);
+      setContentError('');
+      return () => {
+        cancelled = true;
+      };
+    }
+    setContent('');
+    setContentError('');
+    loadDocumentArtifactContent(selected)
+      .then((value) => {
+        if (cancelled) return;
+        contentCache.current.set(selected.id, value);
+        setContent(value);
+      })
+      .catch((error) => {
+        if (!cancelled) setContentError(error instanceof Error ? error.message : String(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
+
+  return (
+    <section className="explorer document-explorer">
+      <div className="explorer-heading">
+        <div className="brand-mark large"><FileText size={24} /></div>
+        <div><p>Artifact explorer</p><h2>Document Explorer</h2></div>
+      </div>
+      <div className="explorer-toolbar">
+        <label className="explorer-search">
+          <Search size={16} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title, type, preview, conversation, or role" />
+        </label>
+        <span>{filtered.length.toLocaleString()} of {artifacts.length.toLocaleString()} documents</span>
+      </div>
+      <div className="explorer-grid">
+        <aside className="explorer-facets">
+          <button className={documentType === 'all' ? 'facet-row active' : 'facet-row'} type="button" onClick={() => setDocumentType('all')}>
+            <span>All documents</span><strong>{artifacts.length.toLocaleString()}</strong>
+          </button>
+          {types.map((item) => (
+            <button className={documentType === item.name ? 'facet-row active' : 'facet-row'} type="button" key={item.name} onClick={() => setDocumentType(item.name)}>
+              <span>{item.name}</span><strong>{item.count.toLocaleString()}</strong>
+            </button>
+          ))}
+        </aside>
+        <div className="artifact-list">
+          {visibleRows.map((item) => (
+            <button className={selected?.id === item.id ? 'artifact-row selected' : 'artifact-row'} type="button" key={item.id} onClick={() => setSelectedId(item.id)}>
+              <span><FileText size={14} />{item.title}</span>
+              <small>{item.documentType} - {roleLabel(item.role)} - {formatDate(item.createTime)}</small>
+              <p>{item.preview}</p>
+            </button>
+          ))}
+          {filtered.length > visibleRows.length ? <p className="list-limit-note">Showing first {visibleRows.length.toLocaleString()} matches. Narrow the search or choose a document type.</p> : null}
+          {!filtered.length ? <p className="empty-note">No documents match those filters.</p> : null}
+        </div>
+        <section className="artifact-detail">
+          {selected ? (
+            <>
+              <div className="artifact-detail-head">
+                <div><span>{selected.documentType}</span><h3>{selected.title}</h3><p>{selected.conversationTitle} - {roleLabel(selected.role)} - {formatDate(selected.createTime)}</p></div>
+                <div className="artifact-actions">
+                  <CopyButton value={content} label="Copy document" />
+                  <button className="toolbar-button" type="button" disabled={!content} onClick={() => void exportDocumentMarkdown(selected, content)}><Download size={16} />{selected.url ? 'Export original' : 'Export'}</button>
+                  <button className="toolbar-button active" type="button" onClick={() => onOpenSource(selected)}><ArrowLeft size={16} />Source</button>
+                </div>
+              </div>
+              {contentError ? <div className="notice">{contentError}</div> : content ? <div className="document-preview"><MarkdownBlock text={content} /></div> : <p className="empty-note">Loading source document...</p>}
+            </>
+          ) : <p className="empty-note">Select a document to inspect it.</p>}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function ArtifactImage({ asset, className = '' }: { asset: AssetArtifact; className?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed || !asset.url) {
+    return <div className={`asset-image-fallback ${className}`}><FileImage size={24} /><span>Preview unavailable</span></div>;
+  }
+  return <img className={className} src={resolveArchiveAssetUrl(asset.url)} alt={asset.label} loading="lazy" onError={() => setFailed(true)} />;
+}
+
+function AssetExplorer({
+  artifacts,
+  onOpenSource,
+  onOpenAsset,
+}: {
+  artifacts: AssetArtifact[];
+  onOpenSource: (artifact: AssetArtifact) => void;
+  onOpenAsset: (artifact: AssetArtifact) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [kind, setKind] = useState('all');
+  const [selectedId, setSelectedId] = useState('');
+  const counts = useMemo(() => {
+    const result = { local: 0, external: 0, missing: 0 };
+    for (const item of artifacts) result[item.kind] += 1;
+    return result;
+  }, [artifacts]);
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return artifacts
+      .filter((item) => kind === 'all' || item.kind === kind)
+      .filter((item) => !needle || `${item.label}\n${item.original}\n${item.url}\n${item.conversationTitle}`.toLowerCase().includes(needle))
+      .sort((a, b) => (b.createTime || 0) - (a.createTime || 0));
+  }, [artifacts, kind, query]);
+  const selected = filtered.find((item) => item.id === selectedId) || filtered[0] || null;
+  const visibleRows = filtered.slice(0, 500);
+
+  useEffect(() => {
+    if (!filtered.length) {
+      if (selectedId) setSelectedId('');
+      return;
+    }
+    if (!filtered.some((item) => item.id === selectedId)) setSelectedId(filtered[0].id);
+  }, [filtered, selectedId]);
+
+  return (
+    <section className="explorer asset-explorer">
+      <div className="explorer-heading">
+        <div className="brand-mark large"><Images size={24} /></div>
+        <div><p>Artifact explorer</p><h2>Asset Explorer</h2></div>
+      </div>
+      <div className="explorer-toolbar">
+        <label className="explorer-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search label, pointer, URL, or conversation" /></label>
+        <span>{filtered.length.toLocaleString()} of {artifacts.length.toLocaleString()} assets</span>
+      </div>
+      <div className="explorer-grid">
+        <aside className="explorer-facets">
+          {([['all', 'All assets', artifacts.length], ['local', 'Local', counts.local], ['external', 'External', counts.external], ['missing', 'Missing', counts.missing]] as const).map(([value, label, count]) => (
+            <button className={kind === value ? 'facet-row active' : 'facet-row'} type="button" key={value} onClick={() => setKind(value)}><span>{label}</span><strong>{count.toLocaleString()}</strong></button>
+          ))}
+        </aside>
+        <div className="artifact-list asset-artifact-list">
+          {visibleRows.map((item) => (
+            <button className={selected?.id === item.id ? `asset-artifact-row selected ${item.kind}` : `asset-artifact-row ${item.kind}`} type="button" key={item.id} onClick={() => setSelectedId(item.id)}>
+              {item.kind === 'missing' ? <div className="asset-image-fallback"><FileImage size={22} /><span>Missing</span></div> : <ArtifactImage asset={item} />}
+              <strong>{item.kind === 'external' ? 'External image' : item.label}</strong>
+              <small>{item.conversationTitle}</small>
+            </button>
+          ))}
+          {filtered.length > visibleRows.length ? <p className="list-limit-note">Showing first {visibleRows.length.toLocaleString()} matches. Narrow the search or choose an asset type.</p> : null}
+          {!filtered.length ? <p className="empty-note">No assets match those filters.</p> : null}
+        </div>
+        <section className="artifact-detail">
+          {selected ? (
+            <>
+              <div className="artifact-detail-head">
+                <div><span>{selected.kind}</span><h3>{selected.label}</h3><p>{selected.conversationTitle} - {roleLabel(selected.role)} - {formatDate(selected.createTime)}</p></div>
+                <div className="artifact-actions">
+                  <CopyButton value={selected.original} label="Copy pointer" />
+                  {selected.kind !== 'missing' ? <button className="toolbar-button" type="button" onClick={() => onOpenAsset(selected)}><Eye size={16} />Full size</button> : null}
+                  <button className="toolbar-button active" type="button" onClick={() => onOpenSource(selected)}><ArrowLeft size={16} />Source</button>
+                </div>
+              </div>
+              {selected.kind === 'missing' ? (
+                <div className="missing-asset-diagnostic"><FileImage size={34} /><h4>Local asset not found</h4><p>This pointer was present in the conversation export but no matching file was available during import.</p><code>{selected.original}</code></div>
+              ) : (
+                <button className="asset-detail-preview" type="button" onClick={() => onOpenAsset(selected)}><ArtifactImage asset={selected} /></button>
+              )}
+              <dl className="asset-metadata"><dt>Original</dt><dd>{selected.original}</dd><dt>Resolved URL</dt><dd>{selected.url || 'Not resolved'}</dd>{selected.width ? <><dt>Dimensions</dt><dd>{selected.width} x {selected.height || '?'}</dd></> : null}</dl>
+            </>
+          ) : <p className="empty-note">Select an asset to inspect it.</p>}
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function RightRail({
   index,
   messages,
@@ -1465,6 +1723,8 @@ export default function App() {
   const [selected, setSelected] = useState<ConversationSummary | null>(null);
   const [conversation, setConversation] = useState<ConversationFile | null>(null);
   const [codeArtifacts, setCodeArtifacts] = useState<CodeArtifact[]>([]);
+  const [documentArtifacts, setDocumentArtifacts] = useState<DocumentArtifact[]>([]);
+  const [assetArtifacts, setAssetArtifacts] = useState<AssetArtifact[]>([]);
   const [showHidden, setShowHidden] = useState(false);
   const [lightboxAsset, setLightboxAsset] = useState<ArchiveAsset | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -1489,17 +1749,27 @@ export default function App() {
   useEffect(() => {
     if (!artifacts && !isTauriRuntime()) {
       setCodeArtifacts([]);
+      setDocumentArtifacts([]);
+      setAssetArtifacts([]);
       return;
     }
     if (!isTauriRuntime()) {
       setCodeArtifacts(artifacts?.code || []);
+      setDocumentArtifacts(artifacts?.documents || []);
+      setAssetArtifacts(artifacts?.assets || []);
       return;
     }
-    loadCodeArtifacts()
-      .then(setCodeArtifacts)
+    Promise.all([loadCodeArtifacts(), loadDocumentArtifacts(), loadAssetArtifacts()])
+      .then(([code, documents, assets]) => {
+        setCodeArtifacts(code);
+        setDocumentArtifacts(documents);
+        setAssetArtifacts(assets);
+      })
       .catch((err) => {
-        console.error('Could not load code artifacts', err);
+        console.error('Could not load artifact explorers', err);
         setCodeArtifacts(artifacts?.code || []);
+        setDocumentArtifacts(artifacts?.documents || []);
+        setAssetArtifacts(artifacts?.assets || []);
       });
   }, [artifacts]);
 
@@ -1667,7 +1937,7 @@ export default function App() {
     openConversation(next);
   }
 
-  function openCodeArtifactSource(artifact: CodeArtifact) {
+  function openArtifactSource(artifact: CodeArtifact | DocumentArtifact | AssetArtifact) {
     if (!index) return;
     const next = getConversationById(index, artifact.conversationId);
     if (!next) return;
@@ -1755,7 +2025,7 @@ export default function App() {
   }
 
   return (
-    <div className={activeView === 'code' ? 'app-shell explorer-open' : 'app-shell'}>
+    <div className={activeView === 'code' || activeView === 'documents' || activeView === 'assets' ? 'app-shell explorer-open' : 'app-shell'}>
       <Sidebar
         index={index}
         conversations={filtered.conversations}
@@ -1775,6 +2045,14 @@ export default function App() {
         onCodeExplorer={() => {
           setSelected(null);
           setActiveView('code');
+        }}
+        onDocumentExplorer={() => {
+          setSelected(null);
+          setActiveView('documents');
+        }}
+        onAssetExplorer={() => {
+          setSelected(null);
+          setActiveView('assets');
         }}
       />
       <main className="reader" ref={mainRef} onScroll={handleReaderScroll}>
@@ -1819,7 +2097,11 @@ export default function App() {
             <div className="conversation-loading">Loading conversation...</div>
           )
         ) : activeView === 'code' ? (
-          <CodeExplorer artifacts={codeArtifacts} onOpenSource={openCodeArtifactSource} />
+          <CodeExplorer artifacts={codeArtifacts} onOpenSource={openArtifactSource} />
+        ) : activeView === 'documents' ? (
+          <DocumentExplorer artifacts={documentArtifacts} onOpenSource={openArtifactSource} />
+        ) : activeView === 'assets' ? (
+          <AssetExplorer artifacts={assetArtifacts} onOpenSource={openArtifactSource} onOpenAsset={setLightboxAsset} />
         ) : (
           <Dashboard index={index} artifacts={artifacts} viewerState={viewerState} onSelect={openConversation} />
         )}

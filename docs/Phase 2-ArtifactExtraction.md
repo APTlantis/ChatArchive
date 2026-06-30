@@ -36,11 +36,14 @@ Acceptance checks:
 
 Goal: recover document-like outputs without manually searching conversations.
 
-- Add an explorer mode or tab for Documents.
-- Group by document type: README, Release notes, Specification, Architecture, Standard, Roadmap, Document.
-- Search title, type, preview, and source conversation.
-- Open source conversation at source message.
-- Export selected document candidates to Markdown.
+Status: Implemented.
+
+- Added a three-pane Document Explorer with all seven document-type facets.
+- Searches title, type, preview, source conversation, and source role.
+- Shows newest-first results with a 500-row render bound and full facet counts.
+- Indexes actual uploaded document attachments and OpenAI-produced download links instead of inferring documents from ordinary message prose.
+- Previews Markdown and text attachments directly; binary formats such as PDF, DOCX, and PPTX remain original-file artifacts.
+- Supports byte-faithful single-document export, copy for previewable text, and source-message navigation.
 
 Acceptance checks:
 
@@ -52,12 +55,13 @@ Acceptance checks:
 
 Goal: make images and missing assets discoverable across the whole archive.
 
-- Add an explorer mode or tab for Assets.
-- Filter local, external, and missing assets.
-- Search label, original pointer, URL, and source conversation.
-- Show image thumbnails for local/external assets.
-- Show clear missing-asset cards for unresolved pointers.
-- Open full-size preview and open source conversation.
+Status: Implemented.
+
+- Added a three-pane Asset Explorer with all, local, external, and missing facets and counts.
+- Searches label, original pointer, URL, and source conversation.
+- Shows a lazy 500-item thumbnail grid with a controlled unavailable-image fallback.
+- Opens full-size previews for available images through Tauri's asset protocol.
+- Keeps all missing assets as diagnostic cards with copy-pointer and source-message actions; it does not mutate or relink the archive.
 
 Acceptance checks:
 

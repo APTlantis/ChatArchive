@@ -4,6 +4,8 @@ import type {
   ArchiveIndex,
   ArtifactIndex,
   CodeArtifact,
+  DocumentArtifact,
+  AssetArtifact,
   ConversationFile,
   SearchFilters,
   ViewerState,
@@ -78,6 +80,38 @@ export async function loadCodeArtifacts(): Promise<CodeArtifact[]> {
   if (isTauriRuntime()) return invoke<CodeArtifact[]>('list_code_artifacts');
   const artifacts = await loadArtifactIndex();
   return artifacts?.code || [];
+}
+
+export async function loadDocumentArtifacts(): Promise<DocumentArtifact[]> {
+  if (isTauriRuntime()) return invoke<DocumentArtifact[]>('list_document_artifacts');
+  const artifacts = await loadArtifactIndex();
+  return artifacts?.documents || [];
+}
+
+export async function loadAssetArtifacts(): Promise<AssetArtifact[]> {
+  if (isTauriRuntime()) return invoke<AssetArtifact[]>('list_asset_artifacts');
+  const artifacts = await loadArtifactIndex();
+  return artifacts?.assets || [];
+}
+
+export async function loadDocumentArtifactContent(artifact: DocumentArtifact): Promise<string> {
+  if (isTauriRuntime()) return invoke<string>('get_document_artifact_content', { artifactId: artifact.id });
+  if (artifact.url) {
+    return `# ${artifact.title}\n\nThis is an attached document. Open it in the desktop archive to preview or export the original file.\n\nPointer: \`${artifact.original || artifact.url}\``;
+  }
+  const conversation = await loadConversation(artifact.conversationId);
+  const message = conversation.messages.find((item) => item.id === artifact.messageId);
+  const normalizedPreview = artifact.preview.replace(/\s+/g, ' ').trim();
+  const match = message?.blocks.find(
+    (block) => block.type === 'markdown' && block.text.replace(/\s+/g, ' ').trim().startsWith(normalizedPreview),
+  );
+  if (!match || match.type !== 'markdown') throw new Error('Document source block was not found.');
+  return match.text;
+}
+
+export async function exportDocumentMarkdown(artifact: DocumentArtifact, markdown: string) {
+  if (!isTauriRuntime()) return null;
+  return invoke<string>('export_document_markdown', { artifactId: artifact.id, markdown });
 }
 
 export async function loadConversation(conversationId: string): Promise<ConversationFile> {

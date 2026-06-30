@@ -127,6 +127,102 @@ pub fn list_code_artifacts(app: AppHandle) -> Result<Vec<CodeArtifact>, String> 
 }
 
 #[tauri::command]
+pub fn list_document_artifacts(app: AppHandle) -> Result<Vec<DocumentArtifact>, String> {
+    let (_, conn) = open_library_db(&app)?;
+    db::list_document_artifacts(&conn)
+}
+
+#[tauri::command]
+pub fn get_document_artifact_content(
+    app: AppHandle,
+    artifact_id: String,
+) -> Result<String, String> {
+    let (_, conn) = open_library_db(&app)?;
+    db::document_artifact_content(&conn, &artifact_id)
+}
+
+#[tauri::command]
+pub fn list_asset_artifacts(app: AppHandle) -> Result<Vec<AssetArtifact>, String> {
+    let (_, conn) = open_library_db(&app)?;
+    db::list_asset_artifacts(&conn)
+}
+
+#[tauri::command]
+pub fn export_document_markdown(
+    app: AppHandle,
+    artifact_id: String,
+    markdown: String,
+) -> Result<String, String> {
+    let (_, conn) = open_library_db(&app)?;
+    let artifact = db::load_document_artifact(&conn, &artifact_id)?;
+    let archive_path = db::active_archive_path(&conn)?.ok_or("No active archive folder found")?;
+    let exports = archive_path.join("exports");
+    fs::create_dir_all(&exports)
+        .map_err(|err| format!("Could not create exports folder: {err}"))?;
+    if let Some(source) = artifact
+        .url
+        .as_deref()
+        .and_then(|value| value.strip_prefix("local-file://"))
+        .map(PathBuf::from)
+        .filter(|path| path.is_file())
+    {
+        let extension = source
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("document");
+        let stem = source
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("document");
+        let safe_stem = stem
+            .chars()
+            .map(|value| {
+                if value.is_ascii_alphanumeric() || matches!(value, '-' | '_' | ' ') {
+                    value
+                } else {
+                    '-'
+                }
+            })
+            .collect::<String>();
+        let file = exports.join(format!(
+            "{}-{}-{}.{}",
+            safe_stem.trim().chars().take(72).collect::<String>(),
+            artifact.base.id,
+            Utc::now().format("%Y%m%d%H%M%S"),
+            extension
+        ));
+        fs::copy(&source, &file)
+            .map_err(|err| format!("Could not export original document: {err}"))?;
+        return Ok(file.to_string_lossy().to_string());
+    }
+
+    let mut slug = artifact
+        .title
+        .chars()
+        .map(|value| {
+            if value.is_ascii_alphanumeric() {
+                value.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    while slug.contains("--") {
+        slug = slug.replace("--", "-");
+    }
+    let slug = slug.trim_matches('-');
+    let slug = if slug.is_empty() { "document" } else { slug };
+    let file = exports.join(format!(
+        "{}-{}-{}.md",
+        slug.chars().take(72).collect::<String>(),
+        artifact.base.id,
+        Utc::now().format("%Y%m%d%H%M%S")
+    ));
+    fs::write(&file, markdown).map_err(|err| format!("Could not write document export: {err}"))?;
+    Ok(file.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 pub fn get_dashboard(app: AppHandle) -> Result<LibraryStatus, String> {
     get_library_status(app)
 }
