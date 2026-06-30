@@ -42,7 +42,8 @@ Status: Implemented.
 - Searches title, type, preview, source conversation, and source role.
 - Shows newest-first results with a 500-row render bound and full facet counts.
 - Indexes actual uploaded document attachments and OpenAI-produced download links instead of inferring documents from ordinary message prose.
-- Previews Markdown and text attachments directly; binary formats such as PDF, DOCX, and PPTX remain original-file artifacts.
+- Resolves exported `.dat` payloads back to their attachment filenames in a dedicated document store, separate from image assets.
+- Includes Markdown, text, JSON, TOML, YAML, CSV, XML, HTML, PDF, and Office documents. Text-based formats preview directly; binary formats remain original-file artifacts.
 - Supports byte-faithful single-document export, copy for previewable text, and source-message navigation.
 
 Acceptance checks:

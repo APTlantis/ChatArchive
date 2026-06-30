@@ -817,8 +817,13 @@ a:hover {
 .asset-artifact-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 168px;
   align-content: start;
   gap: 8px;
+}
+
+.asset-explorer .explorer-grid {
+  grid-template-columns: minmax(150px, 190px) minmax(360px, 420px) minmax(280px, 1fr);
 }
 
 .asset-artifact-list .list-limit-note,
@@ -837,6 +842,7 @@ a:hover {
   color: var(--soft);
   cursor: pointer;
   text-align: left;
+  min-height: 168px;
 }
 
 .asset-artifact-row:hover,
@@ -1546,7 +1552,8 @@ pre::-webkit-scrollbar-thumb:hover {
     display: none;
   }
 
-  .explorer-grid {
+  .explorer-grid,
+  .asset-explorer .explorer-grid {
     grid-template-columns: minmax(140px, 180px) minmax(0, 1fr);
   }
 
@@ -1635,7 +1642,8 @@ pre::-webkit-scrollbar-thumb:hover {
     flex-direction: column;
   }
 
-  .explorer-grid {
+  .explorer-grid,
+  .asset-explorer .explorer-grid {
     grid-template-columns: 1fr;
   }
 

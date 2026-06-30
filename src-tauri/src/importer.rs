@@ -84,6 +84,8 @@ impl ProviderImporter for OpenAiImporter {
             .map_err(|err| format!("Could not create conversations folder: {err}"))?;
         fs::create_dir_all(staging_path.join("assets"))
             .map_err(|err| format!("Could not create assets folder: {err}"))?;
+        fs::create_dir_all(staging_path.join("documents"))
+            .map_err(|err| format!("Could not create documents folder: {err}"))?;
         fs::create_dir_all(staging_path.join("exports"))
             .map_err(|err| format!("Could not create exports folder: {err}"))?;
         for raw_file in &raw_files {
@@ -316,6 +318,11 @@ fn fix_local_urls_after_commit(
                     asset.url = asset.url.replace(&from, &to);
                 }
             }
+            for document in &mut message.documents {
+                if document.url.starts_with("local-file://") {
+                    document.url = document.url.replace(&from, &to);
+                }
+            }
         }
     }
     for item in &mut manifest.copied_assets {
@@ -479,17 +486,17 @@ fn build_asset_index(source_dir: &Path, files: &[PathBuf]) -> AppResult<AssetInd
             .and_then(|value| value.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        if !matches!(
+        let is_image = matches!(
             ext.as_str(),
             "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "avif" | "svg"
-        ) {
-            continue;
-        }
+        );
         let candidate = AssetCandidate {
             source_path: file.clone(),
             original_name,
         };
-        index.image_files.push(candidate.clone());
+        if is_image {
+            index.image_files.push(candidate.clone());
+        }
         let source_stem = file
             .file_stem()
             .and_then(|value| value.to_str())
@@ -926,21 +933,6 @@ fn extract_assets(
             Ok(())
         };
 
-    if let Some(attachments) = message
-        .pointer("/metadata/attachments")
-        .and_then(Value::as_array)
-    {
-        for attachment in attachments {
-            if let Some(id) = attachment.get("id").and_then(Value::as_str) {
-                add_asset(
-                    &format!("file-service://{id}"),
-                    attachment.get("name").and_then(Value::as_str),
-                    Some(attachment),
-                )?;
-            }
-        }
-    }
-
     if let Some(content_refs) = message
         .pointer("/metadata/content_references")
         .and_then(Value::as_array)
@@ -1021,18 +1013,6 @@ fn extract_assets(
     {
         add_asset(item.as_str(), Some("Attached file"), None)?;
     }
-    for captures in Regex::new(r#"sandbox:/mnt/data/([^"\\\s)]+)"#)
-        .unwrap()
-        .captures_iter(&content_text)
-    {
-        if let Some(pointer) = captures.get(0) {
-            add_asset(
-                pointer.as_str(),
-                captures.get(1).map(|item| item.as_str()),
-                None,
-            )?;
-        }
-    }
     for item in Regex::new(r#"https?://[^"\\\s)]+"#)
         .unwrap()
         .find_iter(&content_text)
@@ -1045,6 +1025,109 @@ fn extract_assets(
         }
     }
     Ok(assets)
+}
+
+fn is_document_name(name: &str) -> bool {
+    let sample = name.to_ascii_lowercase();
+    if Regex::new(r"\.(png|jpe?g|webp|gif|avif|svg|ico|bmp|mp[34]|wav|zip|gz|7z|rar|exe|msi|py|js|jsx|ts|tsx|css|go|rs|java|kt|sh|ps1|bat)(?:$|[?#])")
+        .unwrap()
+        .is_match(&sample)
+    {
+        return false;
+    }
+    Regex::new(r"\.(md|markdown|txt|rst|pdf|doc|docx|odt|rtf|html?|ppt|pptx|toml|json|jsonl|ya?ml|csv|xml)(?:$|[?#])")
+        .unwrap()
+        .is_match(&sample)
+        || Regex::new(r"(?:^|[/\\_-])(readme|changelog|roadmap|license)(?:$|[/\\_.-])")
+            .unwrap()
+            .is_match(&sample)
+}
+
+fn resolve_document_file(
+    pointer: &str,
+    title: &str,
+    staging_path: &Path,
+    asset_index: &AssetIndex,
+) -> AppResult<(String, String)> {
+    for key in asset_keys_from_pointer(pointer) {
+        if let Some(candidate) = pick_asset(asset_index.by_key.get(&key.to_ascii_lowercase())) {
+            let source_stem = candidate
+                .source_path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("document");
+            let destination = staging_path.join("documents").join(format!(
+                "{}-{}",
+                source_stem,
+                sanitize_filename(title)
+            ));
+            if !destination.exists() {
+                fs::copy(&candidate.source_path, &destination).map_err(|err| {
+                    format!(
+                        "Could not copy document {}: {err}",
+                        candidate.source_path.display()
+                    )
+                })?;
+            }
+            return Ok(("local".to_string(), local_file_url(&destination)));
+        }
+    }
+    Ok(("missing".to_string(), String::new()))
+}
+
+fn extract_documents(
+    message: &Value,
+    staging_path: &Path,
+    asset_index: &AssetIndex,
+) -> AppResult<Vec<ArchiveAsset>> {
+    let mut documents = Vec::new();
+    let mut seen = HashSet::new();
+    let mut add_document = |pointer: &str, title: &str| -> AppResult<()> {
+        if pointer.is_empty()
+            || title.is_empty()
+            || !is_document_name(title)
+            || !seen.insert(pointer.to_string())
+        {
+            return Ok(());
+        }
+        let (kind, url) = resolve_document_file(pointer, title, staging_path, asset_index)?;
+        documents.push(ArchiveAsset {
+            id: stable_id(pointer),
+            kind,
+            label: title.to_string(),
+            url,
+            original: pointer.to_string(),
+            width: None,
+            height: None,
+        });
+        Ok(())
+    };
+
+    if let Some(attachments) = message
+        .pointer("/metadata/attachments")
+        .and_then(Value::as_array)
+    {
+        for attachment in attachments {
+            if let (Some(id), Some(name)) = (
+                attachment.get("id").and_then(Value::as_str),
+                attachment.get("name").and_then(Value::as_str),
+            ) {
+                add_document(&format!("file-service://{id}"), name)?;
+            }
+        }
+    }
+
+    let content_text =
+        serde_json::to_string(message.get("content").unwrap_or(&Value::Null)).unwrap_or_default();
+    for captures in Regex::new(r#"sandbox:/mnt/data/([^"\\\s)]+)"#)
+        .unwrap()
+        .captures_iter(&content_text)
+    {
+        if let (Some(pointer), Some(name)) = (captures.get(0), captures.get(1)) {
+            add_document(pointer.as_str(), name.as_str())?;
+        }
+    }
+    Ok(documents)
 }
 
 fn is_hidden_message(message: &Value) -> bool {
@@ -1218,6 +1301,7 @@ fn normalize_message(
             copied,
             manifest,
         )?,
+        documents: extract_documents(message, staging_path, asset_index)?,
         references: extract_references(message),
         hidden: is_hidden_message(message),
         raw_type: content_type.to_string(),
@@ -1362,36 +1446,36 @@ fn build_conversation_artifacts(
                 width: asset.width,
                 height: asset.height,
             });
-            if is_document_asset(asset) {
-                let title = document_asset_title(asset);
-                let document_type = classify_document(&title, &summary.title);
-                let origin = if message.role == "user" {
-                    "Uploaded document"
-                } else {
-                    "OpenAI download"
-                };
-                artifacts.documents.push(DocumentArtifact {
-                    base: base_artifact(
-                        stable_id(&format!(
-                            "document-file:{}:{}:{}:{}",
-                            summary.id, message.id, asset_index, asset.id
-                        )),
-                        "document",
-                        summary,
-                        message,
-                        &format!(
-                            "{}\n{}\n{}\n{}",
-                            summary.title, document_type, title, asset.original
-                        ),
+        }
+        for (document_index, document) in message.documents.iter().enumerate() {
+            let title = document_asset_title(document);
+            let document_type = classify_document(&title, &summary.title);
+            let origin = if message.role == "user" {
+                "Uploaded document"
+            } else {
+                "OpenAI download"
+            };
+            artifacts.documents.push(DocumentArtifact {
+                base: base_artifact(
+                    stable_id(&format!(
+                        "document-file:{}:{}:{}:{}",
+                        summary.id, message.id, document_index, document.id
+                    )),
+                    "document",
+                    summary,
+                    message,
+                    &format!(
+                        "{}\n{}\n{}\n{}",
+                        summary.title, document_type, title, document.original
                     ),
-                    r#type: "document".to_string(),
-                    document_type,
-                    title: title.clone(),
-                    preview: format!("{origin} · {title}"),
-                    original: Some(asset.original.clone()),
-                    url: Some(asset.url.clone()),
-                });
-            }
+                ),
+                r#type: "document".to_string(),
+                document_type,
+                title: title.clone(),
+                preview: format!("{origin} · {title}"),
+                original: Some(document.original.clone()),
+                url: Some(document.url.clone()),
+            });
         }
         let mut links = Vec::new();
         for reference in message
@@ -1445,22 +1529,6 @@ fn base_artifact(
         role: message.role.clone(),
         search_text: artifact_text(&format!("{artifact_type}\n{search_text}")),
     }
-}
-
-fn is_document_asset(asset: &ArchiveAsset) -> bool {
-    let sample = format!("{}\n{}\n{}", asset.label, asset.original, asset.url).to_ascii_lowercase();
-    if Regex::new(r"\.(png|jpe?g|webp|gif|avif|svg|ico|mp[34]|wav|zip|gz|7z|rar|json|jsonl|toml|ya?ml|py|js|jsx|ts|tsx|css|go|rs|java|kt|sh|ps1|bat)(?:$|[?#])")
-        .unwrap()
-        .is_match(&sample)
-    {
-        return false;
-    }
-    Regex::new(r"\.(md|markdown|txt|rst|pdf|doc|docx|odt|rtf|html?|ppt|pptx)(?:$|[?#])")
-        .unwrap()
-        .is_match(&sample)
-        || Regex::new(r"(?:^|[/\\_-])(readme|changelog|roadmap|license)(?:$|[/\\_.-])")
-            .unwrap()
-            .is_match(&sample)
 }
 
 fn document_asset_title(asset: &ArchiveAsset) -> String {
@@ -1630,39 +1698,17 @@ mod tests {
             "Roadmap.docx",
             "notes.txt",
             "deck.pptx",
+            "release.toml",
+            "manifest.json",
         ] {
-            let asset = ArchiveAsset {
-                id: "asset".to_string(),
-                kind: "local".to_string(),
-                label: name.to_string(),
-                url: format!("local-file://C:/archive/{name}"),
-                original: format!("file-service://file-test-{name}"),
-                width: None,
-                height: None,
-            };
-            assert!(is_document_asset(&asset), "expected document: {name}");
+            assert!(is_document_name(name), "expected document: {name}");
         }
     }
 
     #[test]
     fn rejects_non_document_assets() {
-        for name in [
-            "screenshot.png",
-            "README.png",
-            "service.py",
-            "settings.json",
-            "archive.zip",
-        ] {
-            let asset = ArchiveAsset {
-                id: "asset".to_string(),
-                kind: "local".to_string(),
-                label: name.to_string(),
-                url: format!("local-file://C:/archive/{name}"),
-                original: format!("file-service://file-test-{name}"),
-                width: None,
-                height: None,
-            };
-            assert!(!is_document_asset(&asset), "expected non-document: {name}");
+        for name in ["screenshot.png", "README.png", "service.py", "archive.zip"] {
+            assert!(!is_document_name(name), "expected non-document: {name}");
         }
     }
 

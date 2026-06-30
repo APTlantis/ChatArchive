@@ -9,6 +9,8 @@ const OUT_DIR = path.join(ROOT, 'public', 'archive-data');
 const CONV_DIR = path.join(OUT_DIR, 'conversations');
 const ASSET_DIR = path.join(ROOT, 'public', 'archive-assets');
 const ASSET_URL_BASE = '/archive-assets/';
+const DOCUMENT_DIR = path.join(ROOT, 'public', 'archive-documents');
+const DOCUMENT_URL_BASE = '/archive-documents/';
 const ARTIFACTS_JSON = path.join(OUT_DIR, 'artifacts.json');
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.avif']);
@@ -84,8 +86,7 @@ function buildAssetIndex(files) {
 
   for (const file of files) {
     const ext = path.extname(file).toLowerCase();
-    if (!IMAGE_EXTS.has(ext)) continue;
-    imageFiles.push(file);
+    if (IMAGE_EXTS.has(ext)) imageFiles.push(file);
     const name = path.basename(file);
     const stem = name.slice(0, name.length - ext.length);
     add(stem, file);
@@ -148,6 +149,43 @@ function resolveLocalAsset(pointer, assetIndex, copied, manifest) {
   }
   manifest.unresolvedPointers.add(String(pointer));
   return { kind: 'missing', url: '', resolvedPath: null };
+}
+
+function isDocumentName(name) {
+  const sample = String(name || '').toLowerCase();
+  if (/\.(png|jpe?g|webp|gif|avif|svg|ico|bmp|mp[34]|wav|zip|gz|7z|rar|exe|msi|py|js|jsx|ts|tsx|css|go|rs|java|kt|sh|ps1|bat)(?:$|[?#])/.test(sample)) return false;
+  return /\.(md|markdown|txt|rst|pdf|doc|docx|odt|rtf|html?|ppt|pptx|toml|json|jsonl|ya?ml|csv|xml)(?:$|[?#])/.test(sample)
+    || /(?:^|[/\\_-])(readme|changelog|roadmap|license)(?:$|[/\\_.-])/.test(sample);
+}
+
+function resolveDocumentFile(pointer, title, assetIndex) {
+  for (const key of assetKeysFromPointer(pointer)) {
+    const file = pickAsset(assetIndex.byKey.get(key.toLowerCase()));
+    if (file) {
+      const name = `${path.parse(file).name}-${title.replace(/[^A-Za-z0-9._ -]+/g, '_')}`;
+      const destination = path.join(DOCUMENT_DIR, name);
+      if (!fs.existsSync(destination)) fs.copyFileSync(file, destination);
+      return { kind: 'local', url: DOCUMENT_URL_BASE + encodeURIComponent(name) };
+    }
+  }
+  return { kind: 'missing', url: '' };
+}
+
+function extractDocuments(message, assetIndex) {
+  const documents = [];
+  const seen = new Set();
+  const add = (pointer, title) => {
+    if (!pointer || !title || !isDocumentName(title) || seen.has(pointer)) return;
+    seen.add(pointer);
+    const resolved = resolveDocumentFile(pointer, title, assetIndex);
+    documents.push({ id: stableId(pointer), kind: resolved.kind, label: title, url: resolved.url, original: pointer });
+  };
+  for (const attachment of message?.metadata?.attachments || []) {
+    if (attachment.id && attachment.name) add(`file-service://${attachment.id}`, attachment.name);
+  }
+  const text = JSON.stringify(message?.content || {});
+  for (const match of text.matchAll(/sandbox:\/mnt\/data\/([^"\\\s)]+)/g)) add(match[0], match[1]);
+  return documents;
 }
 
 function walk(value, visitor) {
@@ -343,26 +381,27 @@ function buildConversationArtifacts(summary, messages) {
         height: asset.height,
         searchText: artifactText(`${summary.title}\n${asset.kind}\n${asset.label}\n${asset.original}\n${asset.url}`),
       });
-      if (isDocumentAsset(asset)) {
-        const title = documentAssetTitle(asset);
-        const documentType = classifyDocument(title, summary.title);
-        const origin = message.role === 'user' ? 'Uploaded document' : 'OpenAI download';
-        artifacts.documents.push({
-          id: stableId(`document-file:${summary.id}:${message.id}:${assetIndex}:${asset.id}`),
-          type: 'document',
-          conversationId: summary.id,
-          conversationTitle: summary.title,
-          messageId: message.id,
-          createTime: message.createTime,
-          role: message.role,
-          documentType,
-          title,
-          preview: `${origin} · ${title}`,
-          original: asset.original,
-          url: asset.url,
-          searchText: artifactText(`${summary.title}\n${documentType}\n${title}\n${asset.original}`),
-        });
-      }
+    });
+
+    message.documents.forEach((document, documentIndex) => {
+      const title = documentAssetTitle(document);
+      const documentType = classifyDocument(title, summary.title);
+      const origin = message.role === 'user' ? 'Uploaded document' : 'OpenAI download';
+      artifacts.documents.push({
+        id: stableId(`document-file:${summary.id}:${message.id}:${documentIndex}:${document.id}`),
+        type: 'document',
+        conversationId: summary.id,
+        conversationTitle: summary.title,
+        messageId: message.id,
+        createTime: message.createTime,
+        role: message.role,
+        documentType,
+        title,
+        preview: `${origin} · ${title}`,
+        original: document.original,
+        url: document.url,
+        searchText: artifactText(`${summary.title}\n${documentType}\n${title}\n${document.original}`),
+      });
     });
 
     const links = [
@@ -425,12 +464,6 @@ function extractAssets(message, assetIndex, copied, manifest) {
     });
   }
 
-  for (const attachment of message?.metadata?.attachments || []) {
-    if (attachment.id) {
-      addAsset(`file-service://${attachment.id}`, attachment.name, attachment);
-    }
-  }
-
   const contentRefs = message?.metadata?.content_references || [];
   for (const ref of contentRefs) {
     if (Array.isArray(ref.safe_urls)) {
@@ -461,7 +494,6 @@ function extractAssets(message, assetIndex, copied, manifest) {
 
   const text = JSON.stringify(message?.content || {});
   for (const match of text.matchAll(/file-service:\/\/[^"\\\s]+/g)) addAsset(match[0], 'Attached file');
-  for (const match of text.matchAll(/sandbox:\/mnt\/data\/([^"\\\s)]+)/g)) addAsset(match[0], match[1]);
   for (const match of text.matchAll(/https?:\/\/[^"\\\s)]+/g)) {
     if (/\.(png|jpe?g|webp|gif|avif)(\?|$)/i.test(match[0])) addAsset(match[0], 'External image');
   }
@@ -543,6 +575,7 @@ function normalizeMessage(node, assetIndex, copied, manifest) {
     text,
     blocks,
     assets: extractAssets(message, assetIndex, copied, manifest),
+    documents: extractDocuments(message, assetIndex),
     references: extractReferences(message),
     hidden: isHiddenMessage(message),
     rawType: content.content_type || 'unknown',
@@ -592,6 +625,7 @@ function cleanGeneratedDirs() {
   ensureDir(OUT_DIR);
   ensureDir(CONV_DIR);
   ensureDir(ASSET_DIR);
+  ensureDir(DOCUMENT_DIR);
   for (const file of fs.readdirSync(CONV_DIR)) {
     if (file.endsWith('.json')) fs.rmSync(path.join(CONV_DIR, file), { force: true });
   }

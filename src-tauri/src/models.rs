@@ -64,6 +64,8 @@ pub struct ArchiveMessage {
     pub text: String,
     pub blocks: Vec<MessageBlock>,
     pub assets: Vec<ArchiveAsset>,
+    #[serde(default)]
+    pub documents: Vec<ArchiveAsset>,
     pub references: Vec<ArchiveReference>,
     pub hidden: bool,
     pub raw_type: String,

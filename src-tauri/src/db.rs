@@ -501,7 +501,18 @@ pub fn document_artifact_content(conn: &Connection, artifact_id: &str) -> AppRes
                 .to_ascii_lowercase();
             if matches!(
                 extension.as_str(),
-                "md" | "markdown" | "txt" | "rst" | "html" | "htm"
+                "md" | "markdown"
+                    | "txt"
+                    | "rst"
+                    | "html"
+                    | "htm"
+                    | "toml"
+                    | "json"
+                    | "jsonl"
+                    | "yaml"
+                    | "yml"
+                    | "csv"
+                    | "xml"
             ) {
                 return fs::read_to_string(&path).map_err(|err| {
                     format!("Could not read attached document {}: {err}", path.display())
