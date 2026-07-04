@@ -112,6 +112,30 @@ export interface ViewerState {
   scrollPositions: Record<string, number>;
 }
 
+export type KnowledgeTargetType = 'conversation' | 'code' | 'document' | 'asset';
+
+export interface KnowledgeTarget {
+  targetType: KnowledgeTargetType;
+  targetId: string;
+  conversationId: string;
+  title: string;
+}
+
+export interface KnowledgeTag { id: number; name: string; color?: string | null }
+export interface KnowledgeCollection { id: number; name: string; createdAt: number }
+export interface KnowledgeTagLink extends KnowledgeTarget { tagId: number }
+export interface KnowledgeCollectionItem extends KnowledgeTarget { collectionId: number; createdAt: number }
+export interface KnowledgeNote extends KnowledgeTarget { id: number; body: string; createdAt: number; updatedAt: number }
+export interface KnowledgeFavorite extends KnowledgeTarget { createdAt: number }
+export interface KnowledgeState {
+  tags: KnowledgeTag[];
+  collections: KnowledgeCollection[];
+  tagLinks: KnowledgeTagLink[];
+  collectionItems: KnowledgeCollectionItem[];
+  notes: KnowledgeNote[];
+  favorites: KnowledgeFavorite[];
+}
+
 export interface ArtifactIndex {
   generatedAt: string;
   sourcePath: string;

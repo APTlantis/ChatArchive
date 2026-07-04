@@ -10,6 +10,7 @@ import type {
   SearchFilters,
   ViewerState,
   MessageBookmark,
+  KnowledgeState,
 } from './types';
 
 const INDEX_URL = '/archive-data/index.json';
@@ -23,6 +24,7 @@ export interface LibraryStatus {
   index: ArchiveIndex | null;
   artifacts: ArtifactIndex | null;
   viewerState: ViewerState;
+  knowledgeState: KnowledgeState;
 }
 
 export interface ImportSummary {
@@ -127,6 +129,11 @@ export async function searchConversations(filters: SearchFilters) {
 export async function saveViewerState(viewerState: ViewerState) {
   if (!isTauriRuntime()) return viewerState;
   return invoke<ViewerState>('update_viewer_state', { viewerState });
+}
+
+export async function saveKnowledgeState(knowledgeState: KnowledgeState) {
+  if (!isTauriRuntime()) return knowledgeState;
+  return invoke<KnowledgeState>('update_knowledge_state', { knowledgeState });
 }
 
 export async function toggleFavorite(conversationId: string) {

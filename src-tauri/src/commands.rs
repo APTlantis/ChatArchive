@@ -34,6 +34,7 @@ pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
             index: None,
             artifacts: None,
             viewer_state: ViewerState::default(),
+            knowledge_state: KnowledgeState::default(),
         });
     };
     db::ensure_library_layout(&library)?;
@@ -42,6 +43,7 @@ pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
     let artifacts = db::load_artifacts(&conn)?;
     let viewer_state = db::load_viewer_state(&conn)?;
     let state_migrated = db::state_migrated(&conn)?;
+    let knowledge_state = db::load_knowledge_state(&conn)?;
     Ok(LibraryStatus {
         configured: true,
         library_path: Some(library.to_string_lossy().to_string()),
@@ -50,7 +52,17 @@ pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
         index,
         artifacts,
         viewer_state,
+        knowledge_state,
     })
+}
+
+#[tauri::command]
+pub fn update_knowledge_state(
+    app: AppHandle,
+    knowledge_state: KnowledgeState,
+) -> Result<KnowledgeState, String> {
+    let (_, mut conn) = open_library_db(&app)?;
+    db::replace_knowledge_state(&mut conn, &knowledge_state)
 }
 
 #[tauri::command]

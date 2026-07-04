@@ -233,6 +233,8 @@ Features:
 
 **Goal:** Turn archive into a knowledge base.
 
+**Status:** Implemented. ChatArchive now stores reusable manual tags, cross-conversation collections, notes, and favorites in the library SQLite database. Conversations, code snippets, documents, and assets share one organizer, and the Knowledge workspace surfaces collections, starred items, and recent notes.
+
 ---
 
 ## Tags

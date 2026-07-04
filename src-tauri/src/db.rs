@@ -216,6 +216,46 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
         tag_id INTEGER NOT NULL,
         PRIMARY KEY (conversation_id, tag_id)
       );
+      CREATE TABLE IF NOT EXISTS collections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS knowledge_tag_links (
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        tag_id INTEGER NOT NULL,
+        PRIMARY KEY (target_type, target_id, tag_id)
+      );
+      CREATE TABLE IF NOT EXISTS collection_items (
+        collection_id INTEGER NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (collection_id, target_type, target_id)
+      );
+      CREATE TABLE IF NOT EXISTS knowledge_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS knowledge_favorites (
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (target_type, target_id)
+      );
       CREATE TABLE IF NOT EXISTS saved_searches (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -776,6 +816,164 @@ pub fn state_migrated(conn: &Connection) -> AppResult<bool> {
     Ok(value.as_deref() == Some("true"))
 }
 
+pub fn load_knowledge_state(conn: &Connection) -> AppResult<KnowledgeState> {
+    let mut state = KnowledgeState::default();
+    {
+        let mut stmt = conn
+            .prepare("SELECT id, name, color FROM tags ORDER BY name COLLATE NOCASE")
+            .map_err(|err| err.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(KnowledgeTag {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    color: row.get(2)?,
+                })
+            })
+            .map_err(|err| err.to_string())?;
+        state.tags = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| err.to_string())?;
+    }
+    {
+        let mut stmt = conn
+            .prepare("SELECT id, name, created_at FROM collections ORDER BY name COLLATE NOCASE")
+            .map_err(|err| err.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(KnowledgeCollection {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    created_at: row.get(2)?,
+                })
+            })
+            .map_err(|err| err.to_string())?;
+        state.collections = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| err.to_string())?;
+    }
+    {
+        let mut stmt = conn.prepare("SELECT target_type, target_id, conversation_id, title, tag_id FROM knowledge_tag_links").map_err(|err| err.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(KnowledgeTagLink {
+                    target: KnowledgeTarget {
+                        target_type: row.get(0)?,
+                        target_id: row.get(1)?,
+                        conversation_id: row.get(2)?,
+                        title: row.get(3)?,
+                    },
+                    tag_id: row.get(4)?,
+                })
+            })
+            .map_err(|err| err.to_string())?;
+        state.tag_links = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| err.to_string())?;
+    }
+    {
+        let mut stmt = conn.prepare("SELECT target_type, target_id, conversation_id, title, collection_id, created_at FROM collection_items ORDER BY created_at DESC").map_err(|err| err.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(KnowledgeCollectionItem {
+                    target: KnowledgeTarget {
+                        target_type: row.get(0)?,
+                        target_id: row.get(1)?,
+                        conversation_id: row.get(2)?,
+                        title: row.get(3)?,
+                    },
+                    collection_id: row.get(4)?,
+                    created_at: row.get(5)?,
+                })
+            })
+            .map_err(|err| err.to_string())?;
+        state.collection_items = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| err.to_string())?;
+    }
+    {
+        let mut stmt = conn.prepare("SELECT id, target_type, target_id, conversation_id, title, body, created_at, updated_at FROM knowledge_notes ORDER BY updated_at DESC").map_err(|err| err.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(KnowledgeNote {
+                    id: row.get(0)?,
+                    target: KnowledgeTarget {
+                        target_type: row.get(1)?,
+                        target_id: row.get(2)?,
+                        conversation_id: row.get(3)?,
+                        title: row.get(4)?,
+                    },
+                    body: row.get(5)?,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
+                })
+            })
+            .map_err(|err| err.to_string())?;
+        state.notes = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| err.to_string())?;
+    }
+    {
+        let mut stmt = conn.prepare("SELECT target_type, target_id, conversation_id, title, created_at FROM knowledge_favorites ORDER BY created_at DESC").map_err(|err| err.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(KnowledgeFavorite {
+                    target: KnowledgeTarget {
+                        target_type: row.get(0)?,
+                        target_id: row.get(1)?,
+                        conversation_id: row.get(2)?,
+                        title: row.get(3)?,
+                    },
+                    created_at: row.get(4)?,
+                })
+            })
+            .map_err(|err| err.to_string())?;
+        state.favorites = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| err.to_string())?;
+    }
+    Ok(state)
+}
+
+pub fn replace_knowledge_state(
+    conn: &mut Connection,
+    state: &KnowledgeState,
+) -> AppResult<KnowledgeState> {
+    let tx = conn
+        .transaction()
+        .map_err(|err| format!("Could not begin knowledge transaction: {err}"))?;
+    tx.execute_batch("DELETE FROM knowledge_tag_links; DELETE FROM collection_items; DELETE FROM knowledge_notes; DELETE FROM knowledge_favorites; DELETE FROM conversation_tags; DELETE FROM tags; DELETE FROM collections;").map_err(|err| err.to_string())?;
+    for tag in &state.tags {
+        tx.execute(
+            "INSERT INTO tags(id, name, color) VALUES (?1, ?2, ?3)",
+            params![tag.id, tag.name, tag.color],
+        )
+        .map_err(|err| err.to_string())?;
+    }
+    for collection in &state.collections {
+        tx.execute(
+            "INSERT INTO collections(id, name, created_at) VALUES (?1, ?2, ?3)",
+            params![collection.id, collection.name, collection.created_at],
+        )
+        .map_err(|err| err.to_string())?;
+    }
+    for link in &state.tag_links {
+        tx.execute("INSERT INTO knowledge_tag_links(target_type, target_id, conversation_id, title, tag_id) VALUES (?1, ?2, ?3, ?4, ?5)", params![link.target.target_type, link.target.target_id, link.target.conversation_id, link.target.title, link.tag_id]).map_err(|err| err.to_string())?;
+    }
+    for item in &state.collection_items {
+        tx.execute("INSERT INTO collection_items(collection_id, target_type, target_id, conversation_id, title, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)", params![item.collection_id, item.target.target_type, item.target.target_id, item.target.conversation_id, item.target.title, item.created_at]).map_err(|err| err.to_string())?;
+    }
+    for note in &state.notes {
+        tx.execute("INSERT INTO knowledge_notes(id, target_type, target_id, conversation_id, title, body, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)", params![note.id, note.target.target_type, note.target.target_id, note.target.conversation_id, note.target.title, note.body, note.created_at, note.updated_at]).map_err(|err| err.to_string())?;
+    }
+    for favorite in &state.favorites {
+        tx.execute("INSERT INTO knowledge_favorites(target_type, target_id, conversation_id, title, created_at) VALUES (?1, ?2, ?3, ?4, ?5)", params![favorite.target.target_type, favorite.target.target_id, favorite.target.conversation_id, favorite.target.title, favorite.created_at]).map_err(|err| err.to_string())?;
+    }
+    tx.commit()
+        .map_err(|err| format!("Could not commit knowledge state: {err}"))?;
+    load_knowledge_state(conn)
+}
+
 pub fn active_archive_path(conn: &Connection) -> AppResult<Option<PathBuf>> {
     conn.query_row(
         "SELECT archive_path FROM archives WHERE active = 1 LIMIT 1",
@@ -806,4 +1004,72 @@ pub fn stored_conversation_summaries(conn: &Connection) -> AppResult<Vec<Convers
         .map_err(|err| format!("Could not query conversation list: {err}"))?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|err| format!("Could not read conversation list: {err}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn target(target_type: &str, target_id: &str, title: &str) -> KnowledgeTarget {
+        KnowledgeTarget {
+            target_type: target_type.to_string(),
+            target_id: target_id.to_string(),
+            conversation_id: "conversation-1".to_string(),
+            title: title.to_string(),
+        }
+    }
+
+    #[test]
+    fn persists_cross_conversation_knowledge_records() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        let conversation = target("conversation", "conversation-1", "Aegis planning");
+        let code = target("code", "code-1", "Rust importer");
+        let state = KnowledgeState {
+            tags: vec![KnowledgeTag {
+                id: 1,
+                name: "Rust".to_string(),
+                color: None,
+            }],
+            collections: vec![KnowledgeCollection {
+                id: 1,
+                name: "Aegis".to_string(),
+                created_at: 10,
+            }],
+            tag_links: vec![KnowledgeTagLink {
+                target: code.clone(),
+                tag_id: 1,
+            }],
+            collection_items: vec![
+                KnowledgeCollectionItem {
+                    target: conversation,
+                    collection_id: 1,
+                    created_at: 11,
+                },
+                KnowledgeCollectionItem {
+                    target: code.clone(),
+                    collection_id: 1,
+                    created_at: 12,
+                },
+            ],
+            notes: vec![KnowledgeNote {
+                id: 1,
+                target: code.clone(),
+                body: "This became v0.3.0 implementation.".to_string(),
+                created_at: 13,
+                updated_at: 13,
+            }],
+            favorites: vec![KnowledgeFavorite {
+                target: code,
+                created_at: 14,
+            }],
+        };
+
+        let loaded = replace_knowledge_state(&mut conn, &state).unwrap();
+        assert_eq!(loaded.tags.len(), 1);
+        assert_eq!(loaded.collections.len(), 1);
+        assert_eq!(loaded.collection_items.len(), 2);
+        assert_eq!(loaded.notes[0].body, "This became v0.3.0 implementation.");
+        assert_eq!(loaded.favorites[0].target.target_type, "code");
+    }
 }

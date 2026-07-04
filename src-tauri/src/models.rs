@@ -224,6 +224,78 @@ pub struct ViewerState {
     pub scroll_positions: BTreeMap<String, f64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeTag {
+    pub id: i64,
+    pub name: String,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeCollection {
+    pub id: i64,
+    pub name: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeTarget {
+    pub target_type: String,
+    pub target_id: String,
+    pub conversation_id: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeTagLink {
+    #[serde(flatten)]
+    pub target: KnowledgeTarget,
+    pub tag_id: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeCollectionItem {
+    #[serde(flatten)]
+    pub target: KnowledgeTarget,
+    pub collection_id: i64,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeNote {
+    pub id: i64,
+    #[serde(flatten)]
+    pub target: KnowledgeTarget,
+    pub body: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeFavorite {
+    #[serde(flatten)]
+    pub target: KnowledgeTarget,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct KnowledgeState {
+    pub tags: Vec<KnowledgeTag>,
+    pub collections: Vec<KnowledgeCollection>,
+    pub tag_links: Vec<KnowledgeTagLink>,
+    pub collection_items: Vec<KnowledgeCollectionItem>,
+    pub notes: Vec<KnowledgeNote>,
+    pub favorites: Vec<KnowledgeFavorite>,
+}
+
 impl Default for ViewerState {
     fn default() -> Self {
         Self {
@@ -248,6 +320,7 @@ pub struct LibraryStatus {
     pub index: Option<ArchiveIndex>,
     pub artifacts: Option<ArtifactIndex>,
     pub viewer_state: ViewerState,
+    pub knowledge_state: KnowledgeState,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

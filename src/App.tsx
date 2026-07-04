@@ -22,12 +22,15 @@ import {
   Image as ImageIcon,
   Images,
   ListFilter,
+  FolderKanban,
+  NotebookPen,
   PanelLeft,
   Pin,
   Regex,
   RotateCcw,
   Search,
   Star,
+  Tags,
   X,
 } from 'lucide-react';
 import type {
@@ -45,6 +48,8 @@ import type {
   SearchFieldScope,
   SearchFilters,
   ViewerState,
+  KnowledgeState,
+  KnowledgeTarget,
 } from './types';
 import {
   exportConversationMarkdown as exportConversationMarkdownDesktop,
@@ -64,6 +69,7 @@ import {
   saveMessageBookmark,
   saveScrollPosition,
   saveViewerState,
+  saveKnowledgeState,
   selectLibraryFolder,
   toggleFavorite,
   togglePin,
@@ -82,6 +88,7 @@ import {
 } from './artifactLogic';
 
 const VIEWER_STATE_KEY = 'chatArchive.viewerState.v1';
+const KNOWLEDGE_STATE_KEY = 'chatArchive.knowledgeState.v1';
 const FIELD_SCOPES: SearchFieldScope[] = ['all', 'title', 'content', 'code', 'raw', 'assets', 'documents', 'links'];
 const Prism = globalThis.Prism;
 let mermaidReady: Promise<void> | null = null;
@@ -94,7 +101,42 @@ const DEFAULT_FILTERS: SearchFilters = {
   minMessages: '',
   maxMessages: '',
 };
-type AppView = 'dashboard' | 'conversation' | 'code' | 'documents' | 'assets';
+type AppView = 'dashboard' | 'conversation' | 'code' | 'documents' | 'assets' | 'knowledge';
+
+const DEFAULT_TAGS = ['WSL', 'Rust', 'Security', 'Docker', 'AI'];
+
+function createEmptyKnowledgeState(): KnowledgeState {
+  return {
+    tags: DEFAULT_TAGS.map((name, index) => ({ id: index + 1, name, color: null })),
+    collections: [],
+    tagLinks: [],
+    collectionItems: [],
+    notes: [],
+    favorites: [],
+  };
+}
+
+function readKnowledgeState(): KnowledgeState {
+  try {
+    const raw = window.localStorage.getItem(KNOWLEDGE_STATE_KEY);
+    if (!raw) return createEmptyKnowledgeState();
+    const parsed = JSON.parse(raw) as Partial<KnowledgeState>;
+    return {
+      tags: parsed.tags?.length ? parsed.tags : createEmptyKnowledgeState().tags,
+      collections: parsed.collections || [],
+      tagLinks: parsed.tagLinks || [],
+      collectionItems: parsed.collectionItems || [],
+      notes: parsed.notes || [],
+      favorites: parsed.favorites || [],
+    };
+  } catch {
+    return createEmptyKnowledgeState();
+  }
+}
+
+function targetKey(target: KnowledgeTarget) {
+  return `${target.targetType}:${target.targetId}`;
+}
 
 function createEmptyViewerState(): ViewerState {
   return {
@@ -842,6 +884,7 @@ function Sidebar({
   onCodeExplorer,
   onDocumentExplorer,
   onAssetExplorer,
+  onKnowledge,
 }: {
   index: ArchiveIndex;
   conversations: ConversationSummary[];
@@ -858,6 +901,7 @@ function Sidebar({
   onCodeExplorer: () => void;
   onDocumentExplorer: () => void;
   onAssetExplorer: () => void;
+  onKnowledge: () => void;
 }) {
   function updateFilter<K extends keyof SearchFilters>(key: K, value: SearchFilters[K]) {
     onFilters({ ...filters, [key]: value });
@@ -897,6 +941,10 @@ function Sidebar({
             <button className={activeView === 'assets' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onAssetExplorer}>
               <Images size={16} />
               Assets
+            </button>
+            <button className={activeView === 'knowledge' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onKnowledge}>
+              <FolderKanban size={16} />
+              Knowledge
             </button>
             <button className="toolbar-button" type="button" onClick={() => onFilters(DEFAULT_FILTERS)}>
               <RotateCcw size={16} />
@@ -1147,9 +1195,11 @@ function ArtifactDashboard({ artifacts }: { artifacts: ArtifactIndex | null }) {
 function CodeExplorer({
   artifacts,
   onOpenSource,
+  onOrganize,
 }: {
   artifacts: CodeArtifact[];
   onOpenSource: (artifact: CodeArtifact) => void;
+  onOrganize: (target: KnowledgeTarget) => void;
 }) {
   const [query, setQuery] = useState('');
   const [language, setLanguage] = useState('all');
@@ -1248,6 +1298,10 @@ function CodeExplorer({
                   </p>
                 </div>
                 <div className="artifact-actions">
+                  <button className="toolbar-button" type="button" onClick={() => onOrganize({ targetType: 'code', targetId: selected.id, conversationId: selected.conversationId, title: selected.preview || selected.conversationTitle })}>
+                    <Tags size={16} />
+                    Organize
+                  </button>
                   <CopyButton value={selected.text} label="Copy snippet" />
                   <button className="toolbar-button" type="button" onClick={() => exportCodeSnippet(selected)}>
                     <Download size={16} />
@@ -1286,9 +1340,11 @@ function CodeExplorer({
 function DocumentExplorer({
   artifacts,
   onOpenSource,
+  onOrganize,
 }: {
   artifacts: DocumentArtifact[];
   onOpenSource: (artifact: DocumentArtifact) => void;
+  onOrganize: (target: KnowledgeTarget) => void;
 }) {
   const [query, setQuery] = useState('');
   const [documentType, setDocumentType] = useState('all');
@@ -1390,6 +1446,7 @@ function DocumentExplorer({
               <div className="artifact-detail-head">
                 <div><span>{selected.documentType}</span><h3>{selected.title}</h3><p>{selected.conversationTitle} - {roleLabel(selected.role)} - {formatDate(selected.createTime)}</p></div>
                 <div className="artifact-actions">
+                  <button className="toolbar-button" type="button" onClick={() => onOrganize({ targetType: 'document', targetId: selected.id, conversationId: selected.conversationId, title: selected.title })}><Tags size={16} />Organize</button>
                   <CopyButton value={content} label="Copy document" />
                   <button className="toolbar-button" type="button" disabled={!content} onClick={() => void exportDocumentMarkdown(selected, content)}><Download size={16} />{selected.url ? 'Export original' : 'Export'}</button>
                   <button className="toolbar-button active" type="button" onClick={() => onOpenSource(selected)}><ArrowLeft size={16} />Source</button>
@@ -1416,10 +1473,12 @@ function AssetExplorer({
   artifacts,
   onOpenSource,
   onOpenAsset,
+  onOrganize,
 }: {
   artifacts: AssetArtifact[];
   onOpenSource: (artifact: AssetArtifact) => void;
   onOpenAsset: (artifact: AssetArtifact) => void;
+  onOrganize: (target: KnowledgeTarget) => void;
 }) {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState('all');
@@ -1474,6 +1533,7 @@ function AssetExplorer({
               <div className="artifact-detail-head">
                 <div><span>{selected.kind}</span><h3>{selected.label}</h3><p>{selected.conversationTitle} - {roleLabel(selected.role)} - {formatDate(selected.createTime)}</p></div>
                 <div className="artifact-actions">
+                  <button className="toolbar-button" type="button" onClick={() => onOrganize({ targetType: 'asset', targetId: selected.id, conversationId: selected.conversationId, title: selected.label })}><Tags size={16} />Organize</button>
                   <CopyButton value={selected.original} label="Copy pointer" />
                   {selected.kind !== 'missing' ? <button className="toolbar-button" type="button" onClick={() => onOpenAsset(selected)}><Eye size={16} />Full size</button> : null}
                   <button className="toolbar-button active" type="button" onClick={() => onOpenSource(selected)}><ArrowLeft size={16} />Source</button>
@@ -1566,6 +1626,7 @@ function Header({
   onFavorite,
   onPin,
   onRead,
+  onOrganize,
 }: {
   conversation: ConversationFile | null;
   messages: ArchiveMessage[];
@@ -1578,6 +1639,7 @@ function Header({
   onFavorite: () => void;
   onPin: () => void;
   onRead: () => void;
+  onOrganize: () => void;
 }) {
   const [exported, setExported] = useState(false);
   const allCode = messages
@@ -1604,6 +1666,10 @@ function Header({
       </div>
       {conversation ? (
         <div className="topbar-actions">
+          <button className="toolbar-button" type="button" onClick={onOrganize}>
+            <Tags size={16} />
+            Organize
+          </button>
           <button className={favorite ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onFavorite}>
             <Star size={16} />
             Favorite
@@ -1636,6 +1702,132 @@ function Header({
         </div>
       ) : null}
     </header>
+  );
+}
+
+function KnowledgeOrganizer({
+  target,
+  state,
+  onChange,
+  onClose,
+}: {
+  target: KnowledgeTarget;
+  state: KnowledgeState;
+  onChange: (state: KnowledgeState) => void;
+  onClose: () => void;
+}) {
+  const key = targetKey(target);
+  const [tagName, setTagName] = useState('');
+  const [collectionName, setCollectionName] = useState('');
+  const [noteBody, setNoteBody] = useState('');
+  const linkedTags = new Set(state.tagLinks.filter((item) => targetKey(item) === key).map((item) => item.tagId));
+  const linkedCollections = new Set(state.collectionItems.filter((item) => targetKey(item) === key).map((item) => item.collectionId));
+  const favorite = state.favorites.some((item) => targetKey(item) === key);
+  const notes = state.notes.filter((item) => targetKey(item) === key);
+
+  function toggleTag(tagId: number) {
+    const exists = linkedTags.has(tagId);
+    onChange({
+      ...state,
+      tagLinks: exists
+        ? state.tagLinks.filter((item) => !(targetKey(item) === key && item.tagId === tagId))
+        : [...state.tagLinks, { ...target, tagId }],
+    });
+  }
+
+  function toggleCollection(collectionId: number) {
+    const exists = linkedCollections.has(collectionId);
+    onChange({
+      ...state,
+      collectionItems: exists
+        ? state.collectionItems.filter((item) => !(targetKey(item) === key && item.collectionId === collectionId))
+        : [...state.collectionItems, { ...target, collectionId, createdAt: Date.now() }],
+    });
+  }
+
+  return (
+    <div className="knowledge-overlay" role="dialog" aria-modal="true" aria-label={`Organize ${target.title}`}>
+      <section className="knowledge-organizer">
+        <div className="knowledge-head">
+          <div><span>{target.targetType}</span><h2>{target.title}</h2></div>
+          <button className="icon-only" type="button" onClick={onClose} title="Close"><X size={18} /></button>
+        </div>
+        <button
+          className={favorite ? 'toolbar-button active' : 'toolbar-button'}
+          type="button"
+          onClick={() => onChange({
+            ...state,
+            favorites: favorite
+              ? state.favorites.filter((item) => targetKey(item) !== key)
+              : [{ ...target, createdAt: Date.now() }, ...state.favorites],
+          })}
+        ><Star size={16} />{favorite ? 'Favorited' : 'Favorite'}</button>
+        <div className="knowledge-section">
+          <h3><Tags size={15} />Tags</h3>
+          <div className="knowledge-options">
+            {state.tags.map((tag) => <button className={linkedTags.has(tag.id) ? 'filter-chip active' : 'filter-chip'} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}
+          </div>
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            const name = tagName.trim();
+            if (!name || state.tags.some((tag) => tag.name.toLowerCase() === name.toLowerCase())) return;
+            const id = Math.max(0, ...state.tags.map((tag) => tag.id)) + 1;
+            onChange({ ...state, tags: [...state.tags, { id, name, color: null }], tagLinks: [...state.tagLinks, { ...target, tagId: id }] });
+            setTagName('');
+          }}><input value={tagName} onChange={(event) => setTagName(event.target.value)} placeholder="New tag" /><button className="toolbar-button" type="submit">Add</button></form>
+        </div>
+        <div className="knowledge-section">
+          <h3><FolderKanban size={15} />Collections</h3>
+          <div className="knowledge-options">
+            {state.collections.map((collection) => <button className={linkedCollections.has(collection.id) ? 'filter-chip active' : 'filter-chip'} type="button" key={collection.id} onClick={() => toggleCollection(collection.id)}>{collection.name}</button>)}
+          </div>
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            const name = collectionName.trim();
+            if (!name || state.collections.some((collection) => collection.name.toLowerCase() === name.toLowerCase())) return;
+            const id = Math.max(0, ...state.collections.map((collection) => collection.id)) + 1;
+            onChange({ ...state, collections: [...state.collections, { id, name, createdAt: Date.now() }], collectionItems: [...state.collectionItems, { ...target, collectionId: id, createdAt: Date.now() }] });
+            setCollectionName('');
+          }}><input value={collectionName} onChange={(event) => setCollectionName(event.target.value)} placeholder="New collection" /><button className="toolbar-button" type="submit">Add</button></form>
+        </div>
+        <div className="knowledge-section">
+          <h3><NotebookPen size={15} />Notes</h3>
+          {notes.map((note) => <div className="knowledge-note" key={note.id}><p>{note.body}</p><button className="icon-only" type="button" title="Delete note" onClick={() => onChange({ ...state, notes: state.notes.filter((item) => item.id !== note.id) })}><X size={14} /></button></div>)}
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            const body = noteBody.trim();
+            if (!body) return;
+            const now = Date.now();
+            onChange({ ...state, notes: [{ ...target, id: Math.max(0, ...state.notes.map((note) => note.id)) + 1, body, createdAt: now, updatedAt: now }, ...state.notes] });
+            setNoteBody('');
+          }}><textarea value={noteBody} onChange={(event) => setNoteBody(event.target.value)} placeholder="Attach a note..." /><button className="toolbar-button active" type="submit">Save note</button></form>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function KnowledgeView({ state, onOpen }: { state: KnowledgeState; onOpen: (target: KnowledgeTarget) => void }) {
+  const targets = new Map<string, KnowledgeTarget>();
+  [...state.favorites, ...state.notes, ...state.collectionItems, ...state.tagLinks].forEach((item) => targets.set(targetKey(item), item));
+  return (
+    <section className="explorer knowledge-view">
+      <div className="explorer-heading"><div className="brand-mark large"><FolderKanban size={24} /></div><div><p>Knowledge organization</p><h2>Knowledge Base</h2></div></div>
+      <div className="knowledge-summary">
+        <Stat label="Organized items" value={targets.size.toLocaleString()} />
+        <Stat label="Tags" value={state.tags.length.toLocaleString()} />
+        <Stat label="Collections" value={state.collections.length.toLocaleString()} />
+        <Stat label="Notes" value={state.notes.length.toLocaleString()} />
+      </div>
+      <div className="knowledge-columns">
+        <section><h3><FolderKanban size={16} />Collections</h3>{state.collections.map((collection) => {
+          const items = state.collectionItems.filter((item) => item.collectionId === collection.id);
+          return <div className="knowledge-group" key={collection.id}><strong>{collection.name}</strong><span>{items.length} items</span>{items.map((item) => <button type="button" key={targetKey(item)} onClick={() => onOpen(item)}>{item.title}<small>{item.targetType}</small></button>)}</div>;
+        })}{!state.collections.length ? <p className="empty-note">Create a collection from any conversation or artifact.</p> : null}</section>
+        <section><h3><Star size={16} />Favorites</h3>{state.favorites.map((item) => <button className="knowledge-item" type="button" key={targetKey(item)} onClick={() => onOpen(item)}><span>{item.title}</span><small>{item.targetType}</small></button>)}{!state.favorites.length ? <p className="empty-note">Star useful conversations and artifacts.</p> : null}</section>
+        <section><h3><NotebookPen size={16} />Recent notes</h3>{state.notes.map((note) => <button className="knowledge-item note" type="button" key={note.id} onClick={() => onOpen(note)}><span>{note.body}</span><small>{note.title}</small></button>)}{!state.notes.length ? <p className="empty-note">Attach implementation context where it belongs.</p> : null}</section>
+      </div>
+    </section>
   );
 }
 
@@ -1705,6 +1897,8 @@ export default function App() {
   const [libraryMessage, setLibraryMessage] = useState('');
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
   const [viewerState, setViewerState] = useState<ViewerState>(() => readViewerState());
+  const [knowledgeState, setKnowledgeState] = useState<KnowledgeState>(() => readKnowledgeState());
+  const [organizerTarget, setOrganizerTarget] = useState<KnowledgeTarget | null>(null);
   const [activeView, setActiveView] = useState<AppView>('dashboard');
   const [selected, setSelected] = useState<ConversationSummary | null>(null);
   const [conversation, setConversation] = useState<ConversationFile | null>(null);
@@ -1728,6 +1922,7 @@ export default function App() {
         if (status.index) setIndex(status.index);
         if (status.artifacts) setArtifacts(status.artifacts);
         setViewerState(status.viewerState);
+        setKnowledgeState(status.knowledgeState.tags.length ? status.knowledgeState : createEmptyKnowledgeState());
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, [setArtifacts, setError, setIndex]);
@@ -1768,6 +1963,10 @@ export default function App() {
     if (!isTauriRuntime()) window.localStorage.setItem(VIEWER_STATE_KEY, JSON.stringify(viewerState));
     scrollPositions.current = viewerState.scrollPositions;
   }, [viewerState]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) window.localStorage.setItem(KNOWLEDGE_STATE_KEY, JSON.stringify(knowledgeState));
+  }, [knowledgeState]);
 
   useEffect(() => {
     if (!isTauriRuntime() || !index || !libraryStatus || libraryStatus.stateMigrated) return;
@@ -1831,6 +2030,15 @@ export default function App() {
       }
       return next;
     });
+  }
+
+  function applyKnowledgeState(next: KnowledgeState) {
+    setKnowledgeState(next);
+    if (isTauriRuntime()) {
+      saveKnowledgeState(next)
+        .then(setKnowledgeState)
+        .catch((err) => console.error('Could not save knowledge state', err));
+    }
   }
 
   function openConversation(next: ConversationSummary) {
@@ -1988,6 +2196,7 @@ export default function App() {
               if (status) {
                 setLibraryStatus(status);
                 setViewerState(status.viewerState);
+                setKnowledgeState(status.knowledgeState.tags.length ? status.knowledgeState : createEmptyKnowledgeState());
               }
               setLibraryMessage(`Imported ${result.index.totals.conversations.toLocaleString()} conversations.`);
             }
@@ -2011,7 +2220,7 @@ export default function App() {
   }
 
   return (
-    <div className={activeView === 'code' || activeView === 'documents' || activeView === 'assets' ? 'app-shell explorer-open' : 'app-shell'}>
+    <div className={activeView === 'code' || activeView === 'documents' || activeView === 'assets' || activeView === 'knowledge' ? 'app-shell explorer-open' : 'app-shell'}>
       <Sidebar
         index={index}
         conversations={filtered.conversations}
@@ -2040,6 +2249,10 @@ export default function App() {
           setSelected(null);
           setActiveView('assets');
         }}
+        onKnowledge={() => {
+          setSelected(null);
+          setActiveView('knowledge');
+        }}
       />
       <main className="reader" ref={mainRef} onScroll={handleReaderScroll}>
         <Header
@@ -2054,6 +2267,7 @@ export default function App() {
           onFavorite={() => mutateConversationRecord('favorites')}
           onPin={() => mutateConversationRecord('pinned')}
           onRead={toggleRead}
+          onOrganize={() => selected && setOrganizerTarget({ targetType: 'conversation', targetId: selected.id, conversationId: selected.id, title: selected.title })}
         />
         <div className="archive-status">
           <span>{index.sourcePath}</span>
@@ -2083,17 +2297,20 @@ export default function App() {
             <div className="conversation-loading">Loading conversation...</div>
           )
         ) : activeView === 'code' ? (
-          <CodeExplorer artifacts={codeArtifacts} onOpenSource={openArtifactSource} />
+          <CodeExplorer artifacts={codeArtifacts} onOpenSource={openArtifactSource} onOrganize={setOrganizerTarget} />
         ) : activeView === 'documents' ? (
-          <DocumentExplorer artifacts={documentArtifacts} onOpenSource={openArtifactSource} />
+          <DocumentExplorer artifacts={documentArtifacts} onOpenSource={openArtifactSource} onOrganize={setOrganizerTarget} />
         ) : activeView === 'assets' ? (
-          <AssetExplorer artifacts={assetArtifacts} onOpenSource={openArtifactSource} onOpenAsset={setLightboxAsset} />
+          <AssetExplorer artifacts={assetArtifacts} onOpenSource={openArtifactSource} onOpenAsset={setLightboxAsset} onOrganize={setOrganizerTarget} />
+        ) : activeView === 'knowledge' ? (
+          <KnowledgeView state={knowledgeState} onOpen={setOrganizerTarget} />
         ) : (
           <Dashboard index={index} artifacts={artifacts} viewerState={viewerState} onSelect={openConversation} />
         )}
       </main>
       <RightRail index={index} messages={displayedMessages} bookmarks={allBookmarks} onSelectBookmark={selectBookmark} />
       <Lightbox asset={lightboxAsset} onClose={() => setLightboxAsset(null)} />
+      {organizerTarget ? <KnowledgeOrganizer target={organizerTarget} state={knowledgeState} onChange={applyKnowledgeState} onClose={() => setOrganizerTarget(null)} /> : null}
     </div>
   );
 }

@@ -21,6 +21,7 @@ fn main() {
             commands::search_conversations,
             commands::get_dashboard,
             commands::update_viewer_state,
+            commands::update_knowledge_state,
             commands::toggle_favorite,
             commands::toggle_pin,
             commands::mark_read,
