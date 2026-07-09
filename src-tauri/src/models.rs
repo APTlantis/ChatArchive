@@ -296,6 +296,84 @@ pub struct KnowledgeState {
     pub favorites: Vec<KnowledgeFavorite>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectScanRun {
+    pub id: i64,
+    pub scanned_at: i64,
+    pub candidate_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectEvidence {
+    pub evidence_type: String,
+    pub label: String,
+    pub weight: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectCandidate {
+    pub id: String,
+    pub name: String,
+    pub normalized_name: String,
+    pub score: f64,
+    pub first_time: Option<f64>,
+    pub last_time: Option<f64>,
+    pub month_count: usize,
+    pub conversation_ids: Vec<String>,
+    pub evidence: Vec<ProjectEvidence>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Project {
+    pub id: i64,
+    pub name: String,
+    pub normalized_name: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectAlias {
+    pub project_id: i64,
+    pub alias: String,
+    pub normalized_alias: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMembership {
+    pub project_id: i64,
+    #[serde(flatten)]
+    pub target: KnowledgeTarget,
+    pub source: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectExclusion {
+    pub project_id: i64,
+    pub target_type: String,
+    pub target_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectState {
+    pub scan_runs: Vec<ProjectScanRun>,
+    pub candidates: Vec<ProjectCandidate>,
+    pub projects: Vec<Project>,
+    pub aliases: Vec<ProjectAlias>,
+    pub memberships: Vec<ProjectMembership>,
+    pub exclusions: Vec<ProjectExclusion>,
+    pub dismissed_candidates: Vec<String>,
+}
+
 impl Default for ViewerState {
     fn default() -> Self {
         Self {
@@ -321,6 +399,7 @@ pub struct LibraryStatus {
     pub artifacts: Option<ArtifactIndex>,
     pub viewer_state: ViewerState,
     pub knowledge_state: KnowledgeState,
+    pub project_state: ProjectState,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

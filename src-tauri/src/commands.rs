@@ -35,6 +35,7 @@ pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
             artifacts: None,
             viewer_state: ViewerState::default(),
             knowledge_state: KnowledgeState::default(),
+            project_state: ProjectState::default(),
         });
     };
     db::ensure_library_layout(&library)?;
@@ -44,6 +45,7 @@ pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
     let viewer_state = db::load_viewer_state(&conn)?;
     let state_migrated = db::state_migrated(&conn)?;
     let knowledge_state = db::load_knowledge_state(&conn)?;
+    let project_state = db::load_project_state(&conn)?;
     Ok(LibraryStatus {
         configured: true,
         library_path: Some(library.to_string_lossy().to_string()),
@@ -53,6 +55,7 @@ pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
         artifacts,
         viewer_state,
         knowledge_state,
+        project_state,
     })
 }
 
@@ -63,6 +66,37 @@ pub fn update_knowledge_state(
 ) -> Result<KnowledgeState, String> {
     let (_, mut conn) = open_library_db(&app)?;
     db::replace_knowledge_state(&mut conn, &knowledge_state)
+}
+
+#[tauri::command]
+pub fn scan_projects(app: AppHandle) -> Result<ProjectState, String> {
+    let (_, mut conn) = open_library_db(&app)?;
+    let index = db::load_index(&conn)?.ok_or("No archive has been imported yet")?;
+    let artifacts = db::load_artifacts(&conn)?.ok_or("No artifact index is available")?;
+    let knowledge = db::load_knowledge_state(&conn)?;
+    let mut state = db::load_project_state(&conn)?;
+    state.candidates =
+        crate::project_intelligence::scan_projects(&index, &artifacts, &knowledge, &state);
+    let next_id = state.scan_runs.iter().map(|run| run.id).max().unwrap_or(0) + 1;
+    state.scan_runs.insert(
+        0,
+        ProjectScanRun {
+            id: next_id,
+            scanned_at: db::now_ms(),
+            candidate_count: state.candidates.len(),
+        },
+    );
+    state.scan_runs.truncate(20);
+    db::save_project_state(&mut conn, &state)
+}
+
+#[tauri::command]
+pub fn update_project_state(
+    app: AppHandle,
+    project_state: ProjectState,
+) -> Result<ProjectState, String> {
+    let (_, mut conn) = open_library_db(&app)?;
+    db::save_project_state(&mut conn, &project_state)
 }
 
 #[tauri::command]

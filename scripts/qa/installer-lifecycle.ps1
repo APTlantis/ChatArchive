@@ -1,7 +1,9 @@
-param([string]$QaRoot='D:\Chat\.qa')
+param([string]$QaRoot)
 $ErrorActionPreference='Stop'
-$msi='D:\Chat\src-tauri\target\release\bundle\msi\ChatArchive_0.1.0_x64_en-US.msi'
-$nsis='D:\Chat\src-tauri\target\release\bundle\nsis\ChatArchive_0.1.0_x64-setup.exe'
+$workspace=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+if(-not $QaRoot){$QaRoot=Join-Path $workspace '.qa'}
+$msi=Join-Path $workspace 'src-tauri\target\release\bundle\msi\ChatArchive_0.1.0_x64_en-US.msi'
+$nsis=Join-Path $workspace 'src-tauri\target\release\bundle\nsis\ChatArchive_0.1.0_x64-setup.exe'
 $installDir='C:\Program Files\ChatArchive'
 $backup=Join-Path $QaRoot 'installed-backup'
 $originalMsiBackup=Join-Path $QaRoot 'pretest-installed.msi'
@@ -73,7 +75,7 @@ try{
   if(-not $uninstaller){throw 'NSIS uninstaller not found'}
   $p=Start-Process $uninstaller.FullName -ArgumentList '/S' -PassThru -Wait -WindowStyle Hidden;if($p.ExitCode -ne 0){throw "NSIS uninstall failed: $($p.ExitCode)"}
   $results.nsisUninstall='pass'
-  if(-not (Test-Path 'D:\Chat\.qa\library\chatarchive.db')){throw 'Installer lifecycle removed external QA library'}
+  if(-not (Test-Path (Join-Path $QaRoot 'library\chatarchive.db'))){throw 'Installer lifecycle removed external QA library'}
   $results.externalLibraryPreserved='pass'
 }finally{
   Get-Process chatarchive -ErrorAction SilentlyContinue|Stop-Process -Force

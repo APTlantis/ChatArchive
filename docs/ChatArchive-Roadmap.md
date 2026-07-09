@@ -314,6 +314,8 @@ Asset
 
 **Goal:** Discover long-running projects.
 
+**Status:** Implemented. ChatArchive now provides an on-demand local project scan, an evidence-backed review queue, durable confirmed projects with aliases and curation overrides, cross-conversation artifact dashboards, and version-aware activity timelines. Collections seed candidates but remain separate organizational records, and no candidate is promoted without confirmation.
+
 This is where things become unique.
 
 ---

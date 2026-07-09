@@ -1,0 +1,92 @@
+[manifest]
+schema = "APTlantis Entity Manifest"
+schema_version = "2.4"
+manifest_type = "project"
+canonical_name = "Chat.manifest.toml"
+last_updated = "2026-07-08"
+maintainer = "Herb"
+
+[entity]
+id = "chat"
+title = "Chat"
+kind = "project"
+class = "project"
+status = "blocked"
+description = "Tauri desktop application for importing, browsing, and managing OpenAI conversation exports."
+tags = []
+
+[project]
+type = "desktop-application"
+portfolio_class = "project"
+stage = "blocked"
+version = "0.1.0"
+
+[governance]
+primary_standard = "DRS"
+primary_standard_path = "D:\\.library\\aptlantis_core\\DRS\\README.md"
+additional_standards = [
+    "WGS",
+    "PPS",
+]
+additional_standard_paths = [
+    "D:\\.library\\aptlantis_core\\WGS\\README.md",
+    "D:\\.library\\aptlantis_core\\PPS\\README.md",
+]
+inherits_from = "..\\DRS.manifest.toml"
+
+[lifecycle]
+state = "blocked"
+last_reviewed = "2026-07-08"
+maintainer = "Herb"
+
+[paths]
+root = "D:\\DRS\\Chat"
+
+[documentation]
+project_readme = "Project-README.md"
+readme = "README.md"
+
+[relationships]
+parent = "D:\\DRS"
+child_projects = []
+
+[state]
+stability = "mostly-stable"
+active_development = true
+known_gaps = [
+    "Current build, test, artifact, and release posture were not executed during the governance migration.",
+]
+
+[migration]
+archived_manifests = []
+
+[agent]
+read_first = [
+    "AGENTS.md",
+    "Chat.manifest.toml",
+    "Project-README.md",
+]
+authoritative_docs = [
+    "Chat.manifest.toml",
+    "Project-README.md",
+    "AGENTS.md",
+]
+safe_to_modify = true
+notes = "Existing code and artifacts outrank inferred placeholder state; verify before updating lifecycle claims."
+
+[structure]
+required_files = []
+required_child_project_files = [
+    "AGENTS.md",
+    "[EntityName].manifest.toml",
+    "Project-README.md",
+]
+
+[verification]
+level = "metadata-reconciled"
+evidence = "package.json, README.md, tests, and documented installer gate"
+reviewed = "2026-07-08"
+build_verified = false
+tests_verified = false
+artifact_verified = false
+release_verified = false

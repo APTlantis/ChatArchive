@@ -1,12 +1,15 @@
 param(
-  [string]$Source = 'D:\Chat\openai-export',
+  [string]$Source,
   [string]$LiveLibrary = 'A:\ChatArchive',
-  [string]$QaRoot = 'D:\Chat\.qa',
-  [string]$Executable = 'D:\Chat\src-tauri\target\release\chatarchive.exe'
+  [string]$QaRoot,
+  [string]$Executable
 )
 $ErrorActionPreference = 'Stop'
+$workspace = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+if (-not $Source) { $Source = Join-Path $workspace 'openai-export' }
+if (-not $QaRoot) { $QaRoot = Join-Path $workspace '.qa' }
+if (-not $Executable) { $Executable = Join-Path $workspace 'src-tauri\target\release\chatarchive.exe' }
 $qaResolved = [IO.Path]::GetFullPath($QaRoot)
-$workspace = [IO.Path]::GetFullPath('D:\Chat')
 if (-not $qaResolved.StartsWith(($workspace + '\'), [StringComparison]::OrdinalIgnoreCase)) { throw 'QA root escaped workspace' }
 $library = Join-Path $qaResolved 'library'
 if (Test-Path -LiteralPath $library) { Remove-Item -LiteralPath $library -Recurse -Force }

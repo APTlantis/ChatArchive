@@ -11,6 +11,7 @@ import type {
   ViewerState,
   MessageBookmark,
   KnowledgeState,
+  ProjectState,
 } from './types';
 
 const INDEX_URL = '/archive-data/index.json';
@@ -25,6 +26,7 @@ export interface LibraryStatus {
   artifacts: ArtifactIndex | null;
   viewerState: ViewerState;
   knowledgeState: KnowledgeState;
+  projectState: ProjectState;
 }
 
 export interface ImportSummary {
@@ -134,6 +136,16 @@ export async function saveViewerState(viewerState: ViewerState) {
 export async function saveKnowledgeState(knowledgeState: KnowledgeState) {
   if (!isTauriRuntime()) return knowledgeState;
   return invoke<KnowledgeState>('update_knowledge_state', { knowledgeState });
+}
+
+export async function scanProjects() {
+  if (!isTauriRuntime()) return null;
+  return invoke<ProjectState>('scan_projects');
+}
+
+export async function saveProjectState(projectState: ProjectState) {
+  if (!isTauriRuntime()) return projectState;
+  return invoke<ProjectState>('update_project_state', { projectState });
 }
 
 export async function toggleFavorite(conversationId: string) {

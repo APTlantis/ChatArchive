@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod importer;
 mod models;
+mod project_intelligence;
 
 fn main() {
     tauri::Builder::default()
@@ -22,6 +23,8 @@ fn main() {
             commands::get_dashboard,
             commands::update_viewer_state,
             commands::update_knowledge_state,
+            commands::scan_projects,
+            commands::update_project_state,
             commands::toggle_favorite,
             commands::toggle_pin,
             commands::mark_read,

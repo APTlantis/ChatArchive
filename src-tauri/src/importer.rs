@@ -1839,6 +1839,28 @@ mod tests {
             },
         );
         crate::db::replace_viewer_state(&mut conn, &state).unwrap();
+        let project_state = ProjectState {
+            projects: vec![Project {
+                id: 1,
+                name: "Fixture Project".to_string(),
+                normalized_name: "fixture project".to_string(),
+                created_at: 1,
+                updated_at: 1,
+            }],
+            memberships: vec![ProjectMembership {
+                project_id: 1,
+                target: KnowledgeTarget {
+                    target_type: "conversation".to_string(),
+                    target_id: "fixture-conversation".to_string(),
+                    conversation_id: "fixture-conversation".to_string(),
+                    title: "Fixture conversation".to_string(),
+                },
+                source: "manual".to_string(),
+                created_at: 1,
+            }],
+            ..ProjectState::default()
+        };
+        crate::db::save_project_state(&mut conn, &project_state).unwrap();
         crate::db::replace_archive(
             &mut conn,
             &first.archive_id,
@@ -1871,6 +1893,9 @@ mod tests {
             .unwrap()
             .favorites
             .contains_key("fixture-conversation"));
+        let preserved_projects = crate::db::load_project_state(&conn).unwrap();
+        assert_eq!(preserved_projects.projects[0].name, "Fixture Project");
+        assert_eq!(preserved_projects.memberships.len(), 1);
 
         let _ = fs::remove_dir_all(first_library);
         let _ = fs::remove_dir_all(second_library);

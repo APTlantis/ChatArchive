@@ -112,7 +112,7 @@ export interface ViewerState {
   scrollPositions: Record<string, number>;
 }
 
-export type KnowledgeTargetType = 'conversation' | 'code' | 'document' | 'asset';
+export type KnowledgeTargetType = 'conversation' | 'code' | 'document' | 'asset' | 'link';
 
 export interface KnowledgeTarget {
   targetType: KnowledgeTargetType;
@@ -134,6 +134,33 @@ export interface KnowledgeState {
   collectionItems: KnowledgeCollectionItem[];
   notes: KnowledgeNote[];
   favorites: KnowledgeFavorite[];
+}
+
+export interface ProjectScanRun { id: number; scannedAt: number; candidateCount: number }
+export interface ProjectEvidence { evidenceType: string; label: string; weight: number }
+export interface ProjectCandidate {
+  id: string;
+  name: string;
+  normalizedName: string;
+  score: number;
+  firstTime: number | null;
+  lastTime: number | null;
+  monthCount: number;
+  conversationIds: string[];
+  evidence: ProjectEvidence[];
+}
+export interface ArchiveProject { id: number; name: string; normalizedName: string; createdAt: number; updatedAt: number }
+export interface ProjectAlias { projectId: number; alias: string; normalizedAlias: string }
+export interface ProjectMembership extends KnowledgeTarget { projectId: number; source: 'detected' | 'collection' | 'manual'; createdAt: number }
+export interface ProjectExclusion { projectId: number; targetType: KnowledgeTargetType; targetId: string }
+export interface ProjectState {
+  scanRuns: ProjectScanRun[];
+  candidates: ProjectCandidate[];
+  projects: ArchiveProject[];
+  aliases: ProjectAlias[];
+  memberships: ProjectMembership[];
+  exclusions: ProjectExclusion[];
+  dismissedCandidates: string[];
 }
 
 export interface ArtifactIndex {

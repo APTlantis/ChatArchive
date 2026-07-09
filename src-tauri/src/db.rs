@@ -256,6 +256,50 @@ pub fn migrate(conn: &Connection) -> AppResult<()> {
         created_at INTEGER NOT NULL,
         PRIMARY KEY (target_type, target_id)
       );
+      CREATE TABLE IF NOT EXISTS project_scan_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        scanned_at INTEGER NOT NULL,
+        candidate_count INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS project_candidates (
+        id TEXT PRIMARY KEY,
+        normalized_name TEXT NOT NULL,
+        candidate_json TEXT NOT NULL,
+        scan_run_id INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS projects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        normalized_name TEXT NOT NULL UNIQUE,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS project_aliases (
+        project_id INTEGER NOT NULL,
+        alias TEXT NOT NULL,
+        normalized_alias TEXT NOT NULL UNIQUE,
+        PRIMARY KEY (project_id, normalized_alias)
+      );
+      CREATE TABLE IF NOT EXISTS project_memberships (
+        project_id INTEGER NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        source TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (project_id, target_type, target_id)
+      );
+      CREATE TABLE IF NOT EXISTS project_exclusions (
+        project_id INTEGER NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        PRIMARY KEY (project_id, target_type, target_id)
+      );
+      CREATE TABLE IF NOT EXISTS dismissed_project_candidates (
+        normalized_name TEXT PRIMARY KEY,
+        dismissed_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS saved_searches (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -974,6 +1018,94 @@ pub fn replace_knowledge_state(
     load_knowledge_state(conn)
 }
 
+pub fn load_project_state(conn: &Connection) -> AppResult<ProjectState> {
+    let mut state = ProjectState::default();
+    state.scan_runs = query_rows(conn, "SELECT id, scanned_at, candidate_count FROM project_scan_runs ORDER BY scanned_at DESC LIMIT 20", |row| Ok(ProjectScanRun { id: row.get(0)?, scanned_at: row.get(1)?, candidate_count: row.get::<_, i64>(2)? as usize }))?;
+    state.candidates = query_rows(
+        conn,
+        "SELECT candidate_json FROM project_candidates ORDER BY normalized_name",
+        |row| {
+            let raw: String = row.get(0)?;
+            serde_json::from_str(&raw).map_err(|err| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(err),
+                )
+            })
+        },
+    )?;
+    state.projects = query_rows(conn, "SELECT id, name, normalized_name, created_at, updated_at FROM projects ORDER BY name COLLATE NOCASE", |row| Ok(Project { id: row.get(0)?, name: row.get(1)?, normalized_name: row.get(2)?, created_at: row.get(3)?, updated_at: row.get(4)? }))?;
+    state.aliases = query_rows(conn, "SELECT project_id, alias, normalized_alias FROM project_aliases ORDER BY alias COLLATE NOCASE", |row| Ok(ProjectAlias { project_id: row.get(0)?, alias: row.get(1)?, normalized_alias: row.get(2)? }))?;
+    state.memberships = query_rows(conn, "SELECT project_id, target_type, target_id, conversation_id, title, source, created_at FROM project_memberships ORDER BY created_at", |row| Ok(ProjectMembership { project_id: row.get(0)?, target: KnowledgeTarget { target_type: row.get(1)?, target_id: row.get(2)?, conversation_id: row.get(3)?, title: row.get(4)? }, source: row.get(5)?, created_at: row.get(6)? }))?;
+    state.exclusions = query_rows(
+        conn,
+        "SELECT project_id, target_type, target_id FROM project_exclusions",
+        |row| {
+            Ok(ProjectExclusion {
+                project_id: row.get(0)?,
+                target_type: row.get(1)?,
+                target_id: row.get(2)?,
+            })
+        },
+    )?;
+    state.dismissed_candidates = query_rows(
+        conn,
+        "SELECT normalized_name FROM dismissed_project_candidates",
+        |row| row.get(0),
+    )?;
+    Ok(state)
+}
+
+fn query_rows<T, F>(conn: &Connection, sql: &str, mut map: F) -> AppResult<Vec<T>>
+where
+    F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>,
+{
+    let mut stmt = conn.prepare(sql).map_err(|err| err.to_string())?;
+    let rows = stmt
+        .query_map([], |row| map(row))
+        .map_err(|err| err.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())
+}
+
+pub fn save_project_state(conn: &mut Connection, state: &ProjectState) -> AppResult<ProjectState> {
+    let tx = conn.transaction().map_err(|err| err.to_string())?;
+    tx.execute_batch("DELETE FROM project_candidates; DELETE FROM project_scan_runs; DELETE FROM project_aliases; DELETE FROM project_memberships; DELETE FROM project_exclusions; DELETE FROM dismissed_project_candidates; DELETE FROM projects;").map_err(|err| err.to_string())?;
+    for run in &state.scan_runs {
+        tx.execute(
+            "INSERT INTO project_scan_runs(id, scanned_at, candidate_count) VALUES (?1, ?2, ?3)",
+            params![run.id, run.scanned_at, run.candidate_count as i64],
+        )
+        .map_err(|err| err.to_string())?;
+    }
+    let run_id = state.scan_runs.first().map(|run| run.id).unwrap_or(0);
+    for candidate in &state.candidates {
+        tx.execute("INSERT INTO project_candidates(id, normalized_name, candidate_json, scan_run_id) VALUES (?1, ?2, ?3, ?4)", params![candidate.id, candidate.normalized_name, json(candidate)?, run_id]).map_err(|err| err.to_string())?;
+    }
+    for project in &state.projects {
+        tx.execute("INSERT INTO projects(id, name, normalized_name, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)", params![project.id, project.name, project.normalized_name, project.created_at, project.updated_at]).map_err(|err| err.to_string())?;
+    }
+    for alias in &state.aliases {
+        tx.execute(
+            "INSERT INTO project_aliases(project_id, alias, normalized_alias) VALUES (?1, ?2, ?3)",
+            params![alias.project_id, alias.alias, alias.normalized_alias],
+        )
+        .map_err(|err| err.to_string())?;
+    }
+    for membership in &state.memberships {
+        tx.execute("INSERT INTO project_memberships(project_id, target_type, target_id, conversation_id, title, source, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)", params![membership.project_id, membership.target.target_type, membership.target.target_id, membership.target.conversation_id, membership.target.title, membership.source, membership.created_at]).map_err(|err| err.to_string())?;
+    }
+    for exclusion in &state.exclusions {
+        tx.execute("INSERT INTO project_exclusions(project_id, target_type, target_id) VALUES (?1, ?2, ?3)", params![exclusion.project_id, exclusion.target_type, exclusion.target_id]).map_err(|err| err.to_string())?;
+    }
+    for name in &state.dismissed_candidates {
+        tx.execute("INSERT INTO dismissed_project_candidates(normalized_name, dismissed_at) VALUES (?1, ?2)", params![name, now_ms()]).map_err(|err| err.to_string())?;
+    }
+    tx.commit().map_err(|err| err.to_string())?;
+    load_project_state(conn)
+}
+
 pub fn active_archive_path(conn: &Connection) -> AppResult<Option<PathBuf>> {
     conn.query_row(
         "SELECT archive_path FROM archives WHERE active = 1 LIMIT 1",
@@ -1071,5 +1203,44 @@ mod tests {
         assert_eq!(loaded.collection_items.len(), 2);
         assert_eq!(loaded.notes[0].body, "This became v0.3.0 implementation.");
         assert_eq!(loaded.favorites[0].target.target_type, "code");
+    }
+
+    #[test]
+    fn project_curation_survives_state_round_trip() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        let state = ProjectState {
+            projects: vec![Project {
+                id: 1,
+                name: "Aegis".to_string(),
+                normalized_name: "aegis".to_string(),
+                created_at: 1,
+                updated_at: 2,
+            }],
+            aliases: vec![ProjectAlias {
+                project_id: 1,
+                alias: "Aegis App".to_string(),
+                normalized_alias: "aegis app".to_string(),
+            }],
+            memberships: vec![ProjectMembership {
+                project_id: 1,
+                target: target("conversation", "conversation-1", "Aegis planning"),
+                source: "manual".to_string(),
+                created_at: 3,
+            }],
+            exclusions: vec![ProjectExclusion {
+                project_id: 1,
+                target_type: "asset".to_string(),
+                target_id: "asset-1".to_string(),
+            }],
+            dismissed_candidates: vec!["not a project".to_string()],
+            ..ProjectState::default()
+        };
+        let loaded = save_project_state(&mut conn, &state).unwrap();
+        assert_eq!(loaded.projects[0].name, "Aegis");
+        assert_eq!(loaded.aliases.len(), 1);
+        assert_eq!(loaded.memberships.len(), 1);
+        assert_eq!(loaded.exclusions.len(), 1);
+        assert_eq!(loaded.dismissed_candidates, vec!["not a project"]);
     }
 }

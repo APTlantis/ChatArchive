@@ -90,7 +90,7 @@ npm run test:ui
 # Rust importer/database tests
 npm run test:rust
 
-# Destructive real-export audit against D:\Chat\.qa\library
+# Destructive real-export audit against .qa\library under the repo root
 npm run test:native
 
 # MSI and NSIS lifecycle audit
@@ -100,7 +100,7 @@ npm run test:installer
 npm run qa:phase2
 ```
 
-`test:native` mirrors the configured live library into `D:\Chat\.qa\library` before destructive testing. It does not use `A:\ChatArchive` as an import destination. The real export and generated QA workspace remain outside Git; committed fixtures are synthetic.
+`test:native` mirrors the configured live library into `.qa\library` under the repo root before destructive testing. It does not use `A:\ChatArchive` as an import destination. The real export and generated QA workspace remain outside Git; committed fixtures are synthetic.
 
 The June 30, 2026 audit currently records:
 
@@ -142,7 +142,7 @@ npm run preview
 
 In the Tauri app, choose the OpenAI export folder from the import dialog. The folder should contain either a legacy `conversations.json` file or current `conversations-*.json` shards. Current OpenAI exports may also include many `.dat` files. The Rust importer indexes those blobs by file ID, consults `conversation_asset_file_names.json` and attachment metadata for original names, and copies recoverable images and documents into separate archive folders.
 
-For the legacy Node ingest script, the default source is `D:\Chat\openai-history`. You can point it at another OpenAI export folder with `OPENAI_HISTORY_DIR`:
+For the legacy Node ingest script, the default source is `openai-history` under the repo root. You can point it at another OpenAI export folder with `OPENAI_HISTORY_DIR`:
 
 ```powershell
 $env:OPENAI_HISTORY_DIR = "D:\Exports\openai-history"
@@ -160,7 +160,7 @@ public/archive-documents/
 ## Project Layout
 
 ```text
-D:\Chat
+D:\DRS\Chat
 ├── src-tauri/
 │   ├── src/
 │   │   ├── main.rs                    # Tauri command registration

@@ -28,7 +28,7 @@ ChatArchive is a local-first desktop archive for exported ChatGPT conversations.
 - `npm test`: Vitest unit suite
 - `npm run test:ui`: Playwright UI coverage
 - `npm run test:rust`: Rust importer/database tests
-- `npm run test:native`: destructive native audit against `D:\Chat\.qa\library`
+- `npm run test:native`: destructive native audit against the workspace-local `.qa\library`
 - `npm run test:installer`: MSI and NSIS lifecycle audit
 - `npm run qa:phase2`: full Phase 2 release gate
 
@@ -49,5 +49,5 @@ ChatArchive is a local-first desktop archive for exported ChatGPT conversations.
 ## Data And Safety Notes
 
 - The repo may contain private local export data under workspace-local folders such as `openai-export/`; avoid copying or exposing private payloads unnecessarily.
-- `test:native` mirrors the configured live library into `D:\Chat\.qa\library` before destructive testing.
+- `test:native` mirrors the configured live library into the workspace-local `.qa\library` before destructive testing.
 - Current release status and the installer gate blocker are documented in `docs/Phase2-QA-Report.md`.

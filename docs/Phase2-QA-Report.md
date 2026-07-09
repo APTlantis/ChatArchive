@@ -8,14 +8,14 @@
 
 The Phase 2 regression harness is implemented and the unit, Rust, rendered UI, production build, privacy, isolated real-export import, reconciliation, document-fidelity, and native persistence gates pass. The installer audit uncovered a release-blocking defect in the test/restoration workflow: the pre-test installation used `C:\Program Files\ChatArchive`, while the current bundles install per-user under `%LOCALAPPDATA%\ChatArchive`. The first lifecycle runner did not preserve the registered installer's cached MSI before replacement, so it could restore the original executable files but could not recreate the original Windows Installer registration exactly.
 
-The original executable files remain backed up at `D:\Chat\.qa\installed-backup`. Windows Installer now has only the newly built product registered and cached. Under the release criteria, inability to prove exact pre-test installation restoration blocks Stage 3.
+The original executable files remain backed up in the workspace-local `.qa\installed-backup`. Windows Installer now has only the newly built product registered and cached. Under the release criteria, inability to prove exact pre-test installation restoration blocks Stage 3.
 
 ## Environment and isolation
 
-- Source export: `D:\Chat\openai-export`
+- Source export: workspace-local `openai-export`
 - Read-only live source library: `A:\ChatArchive`
-- Destructive test library: `D:\Chat\.qa\library`
-- Isolated native settings/WebView profile: `D:\Chat\.qa\native-profile`
+- Destructive test library: workspace-local `.qa\library`
+- Isolated native settings/WebView profile: workspace-local `.qa\native-profile`
 - Real export content is excluded from Git. QA output records only counts, sizes, timing, and hashes.
 
 ## Automated results

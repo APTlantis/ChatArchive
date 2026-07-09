@@ -23,6 +23,9 @@ import {
   Images,
   ListFilter,
   FolderKanban,
+  GitMerge,
+  Network,
+  ScanSearch,
   NotebookPen,
   PanelLeft,
   Pin,
@@ -50,6 +53,9 @@ import type {
   ViewerState,
   KnowledgeState,
   KnowledgeTarget,
+  ArchiveProject,
+  ProjectCandidate,
+  ProjectState,
 } from './types';
 import {
   exportConversationMarkdown as exportConversationMarkdownDesktop,
@@ -70,6 +76,8 @@ import {
   saveScrollPosition,
   saveViewerState,
   saveKnowledgeState,
+  saveProjectState,
+  scanProjects,
   selectLibraryFolder,
   toggleFavorite,
   togglePin,
@@ -89,6 +97,7 @@ import {
 
 const VIEWER_STATE_KEY = 'chatArchive.viewerState.v1';
 const KNOWLEDGE_STATE_KEY = 'chatArchive.knowledgeState.v1';
+const PROJECT_STATE_KEY = 'chatArchive.projectState.v1';
 const FIELD_SCOPES: SearchFieldScope[] = ['all', 'title', 'content', 'code', 'raw', 'assets', 'documents', 'links'];
 const Prism = globalThis.Prism;
 let mermaidReady: Promise<void> | null = null;
@@ -101,7 +110,7 @@ const DEFAULT_FILTERS: SearchFilters = {
   minMessages: '',
   maxMessages: '',
 };
-type AppView = 'dashboard' | 'conversation' | 'code' | 'documents' | 'assets' | 'knowledge';
+type AppView = 'dashboard' | 'conversation' | 'code' | 'documents' | 'assets' | 'knowledge' | 'projects';
 
 const DEFAULT_TAGS = ['WSL', 'Rust', 'Security', 'Docker', 'AI'];
 
@@ -136,6 +145,51 @@ function readKnowledgeState(): KnowledgeState {
 
 function targetKey(target: KnowledgeTarget) {
   return `${target.targetType}:${target.targetId}`;
+}
+
+function createEmptyProjectState(): ProjectState {
+  return { scanRuns: [], candidates: [], projects: [], aliases: [], memberships: [], exclusions: [], dismissedCandidates: [] };
+}
+
+function readProjectState(): ProjectState {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PROJECT_STATE_KEY) || '{}') as Partial<ProjectState>;
+    return {
+      scanRuns: parsed.scanRuns || [], candidates: parsed.candidates || [], projects: parsed.projects || [],
+      aliases: parsed.aliases || [], memberships: parsed.memberships || [], exclusions: parsed.exclusions || [],
+      dismissedCandidates: parsed.dismissedCandidates || [],
+    };
+  } catch {
+    return createEmptyProjectState();
+  }
+}
+
+function normalizeProjectName(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+}
+
+function scanProjectsInBrowser(index: ArchiveIndex, knowledge: KnowledgeState, current: ProjectState): ProjectState {
+  const conversationTimes = new Map(index.conversations.map((item) => [item.id, item.updateTime || item.createTime]));
+  const claimed = new Set([...current.projects.map((item) => item.normalizedName), ...current.aliases.map((item) => item.normalizedAlias), ...current.dismissedCandidates]);
+  const candidates: ProjectCandidate[] = [];
+  for (const collection of knowledge.collections) {
+    const ids = [...new Set(knowledge.collectionItems.filter((item) => item.collectionId === collection.id).map((item) => item.conversationId))];
+    const months = new Set(ids.map((id) => conversationTimes.get(id)).filter((value): value is number => Boolean(value)).map((value) => {
+      const date = new Date(value * 1000);
+      return `${date.getUTCFullYear()}-${date.getUTCMonth()}`;
+    }));
+    const normalizedName = normalizeProjectName(collection.name);
+    if (ids.length < 3 || months.size < 2 || claimed.has(normalizedName)) continue;
+    const times = ids.map((id) => conversationTimes.get(id)).filter((value): value is number => Boolean(value));
+    candidates.push({
+      id: `candidate-${normalizedName.replace(/\s+/g, '-')}`, name: collection.name, normalizedName,
+      score: ids.length * 2 + months.size + ids.length * 10, firstTime: times.length ? Math.min(...times) : null,
+      lastTime: times.length ? Math.max(...times) : null, monthCount: months.size, conversationIds: ids,
+      evidence: [{ evidenceType: 'collection', label: `${ids.length} matches`, weight: ids.length * 10 }],
+    });
+  }
+  const run = { id: Math.max(0, ...current.scanRuns.map((item) => item.id)) + 1, scannedAt: Date.now(), candidateCount: candidates.length };
+  return { ...current, candidates, scanRuns: [run, ...current.scanRuns].slice(0, 20) };
 }
 
 function createEmptyViewerState(): ViewerState {
@@ -885,6 +939,7 @@ function Sidebar({
   onDocumentExplorer,
   onAssetExplorer,
   onKnowledge,
+  onProjects,
 }: {
   index: ArchiveIndex;
   conversations: ConversationSummary[];
@@ -902,6 +957,7 @@ function Sidebar({
   onDocumentExplorer: () => void;
   onAssetExplorer: () => void;
   onKnowledge: () => void;
+  onProjects: () => void;
 }) {
   function updateFilter<K extends keyof SearchFilters>(key: K, value: SearchFilters[K]) {
     onFilters({ ...filters, [key]: value });
@@ -945,6 +1001,10 @@ function Sidebar({
             <button className={activeView === 'knowledge' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onKnowledge}>
               <FolderKanban size={16} />
               Knowledge
+            </button>
+            <button className={activeView === 'projects' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onProjects}>
+              <Network size={16} />
+              Projects
             </button>
             <button className="toolbar-button" type="button" onClick={() => onFilters(DEFAULT_FILTERS)}>
               <RotateCcw size={16} />
@@ -1710,11 +1770,15 @@ function KnowledgeOrganizer({
   state,
   onChange,
   onClose,
+  projects,
+  onProjectsChange,
 }: {
   target: KnowledgeTarget;
   state: KnowledgeState;
   onChange: (state: KnowledgeState) => void;
   onClose: () => void;
+  projects: ProjectState;
+  onProjectsChange: (state: ProjectState) => void;
 }) {
   const key = targetKey(target);
   const [tagName, setTagName] = useState('');
@@ -1762,6 +1826,21 @@ function KnowledgeOrganizer({
               : [{ ...target, createdAt: Date.now() }, ...state.favorites],
           })}
         ><Star size={16} />{favorite ? 'Favorited' : 'Favorite'}</button>
+        <div className="knowledge-section">
+          <h3><Network size={15} />Projects</h3>
+          <div className="knowledge-options">
+            {projects.projects.map((project) => {
+              const linked = projects.memberships.some((item) => item.projectId === project.id && targetKey(item) === key);
+              return <button className={linked ? 'filter-chip active' : 'filter-chip'} type="button" key={project.id} onClick={() => onProjectsChange({
+                ...projects,
+                memberships: linked
+                  ? projects.memberships.filter((item) => !(item.projectId === project.id && targetKey(item) === key))
+                  : [...projects.memberships, { ...target, projectId: project.id, source: 'manual', createdAt: Date.now() }],
+              })}>{project.name}</button>;
+            })}
+          </div>
+          {!projects.projects.length ? <p className="empty-note">Confirm a detected project before assigning items.</p> : null}
+        </div>
         <div className="knowledge-section">
           <h3><Tags size={15} />Tags</h3>
           <div className="knowledge-options">
@@ -1826,6 +1905,130 @@ function KnowledgeView({ state, onOpen }: { state: KnowledgeState; onOpen: (targ
         })}{!state.collections.length ? <p className="empty-note">Create a collection from any conversation or artifact.</p> : null}</section>
         <section><h3><Star size={16} />Favorites</h3>{state.favorites.map((item) => <button className="knowledge-item" type="button" key={targetKey(item)} onClick={() => onOpen(item)}><span>{item.title}</span><small>{item.targetType}</small></button>)}{!state.favorites.length ? <p className="empty-note">Star useful conversations and artifacts.</p> : null}</section>
         <section><h3><NotebookPen size={16} />Recent notes</h3>{state.notes.map((note) => <button className="knowledge-item note" type="button" key={note.id} onClick={() => onOpen(note)}><span>{note.body}</span><small>{note.title}</small></button>)}{!state.notes.length ? <p className="empty-note">Attach implementation context where it belongs.</p> : null}</section>
+      </div>
+    </section>
+  );
+}
+
+type ProjectTimelineItem = KnowledgeTarget & {
+  time: number | null;
+  kind: 'conversation' | 'code' | 'document' | 'asset' | 'link';
+  language?: string;
+  source: string;
+  release: boolean;
+};
+
+function projectTimeline(project: ArchiveProject, state: ProjectState, index: ArchiveIndex, artifacts: ArtifactIndex | null) {
+  const memberships = state.memberships.filter((item) => item.projectId === project.id);
+  const excluded = new Set(state.exclusions.filter((item) => item.projectId === project.id).map((item) => `${item.targetType}:${item.targetId}`));
+  const conversationIds = new Set(memberships.map((item) => item.conversationId));
+  const items = new Map<string, ProjectTimelineItem>();
+  for (const conversation of index.conversations) {
+    if (!conversationIds.has(conversation.id) || excluded.has(`conversation:${conversation.id}`)) continue;
+    items.set(`conversation:${conversation.id}`, { targetType: 'conversation', targetId: conversation.id, conversationId: conversation.id, title: conversation.title, time: conversation.updateTime || conversation.createTime, kind: 'conversation', source: 'conversation', release: /\bv?\d+\.\d+(?:\.\d+)?\b/i.test(conversation.title) });
+  }
+  if (artifacts) {
+    const add = (item: ProjectTimelineItem) => {
+      const key = `${item.targetType}:${item.targetId}`;
+      if ((conversationIds.has(item.conversationId) || memberships.some((member) => targetKey(member) === key)) && !excluded.has(key)) items.set(key, item);
+    };
+    artifacts.code.forEach((item) => add({ targetType: 'code', targetId: item.id, conversationId: item.conversationId, title: item.preview || item.conversationTitle, time: item.createTime, kind: 'code', language: item.language, source: 'inherited', release: /\bv?\d+\.\d+(?:\.\d+)?\b/i.test(item.searchText) }));
+    artifacts.documents.forEach((item) => add({ targetType: 'document', targetId: item.id, conversationId: item.conversationId, title: item.title, time: item.createTime, kind: 'document', source: 'inherited', release: /\bv?\d+\.\d+(?:\.\d+)?\b/i.test(`${item.title} ${item.preview}`) }));
+    artifacts.assets.forEach((item) => add({ targetType: 'asset', targetId: item.id, conversationId: item.conversationId, title: item.label, time: item.createTime, kind: 'asset', source: 'inherited', release: /\bv?\d+\.\d+(?:\.\d+)?\b/i.test(item.label) }));
+    artifacts.links.forEach((item) => add({ targetType: 'link', targetId: item.id, conversationId: item.conversationId, title: item.label || item.url, time: item.createTime, kind: 'link', source: 'inherited', release: false }));
+  }
+  return [...items.values()].sort((a, b) => (b.time || 0) - (a.time || 0));
+}
+
+function ProjectIntelligenceView({
+  index, artifacts, state, busy, onScan, onChange, onOpen,
+}: {
+  index: ArchiveIndex;
+  artifacts: ArtifactIndex | null;
+  state: ProjectState;
+  busy: boolean;
+  onScan: () => void;
+  onChange: (state: ProjectState) => void;
+  onOpen: (target: KnowledgeTarget) => void;
+}) {
+  const [selectedId, setSelectedId] = useState<number | null>(state.projects[0]?.id || null);
+  const [query, setQuery] = useState('');
+  const [kind, setKind] = useState('all');
+  const [language, setLanguage] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [rename, setRename] = useState('');
+  const [alias, setAlias] = useState('');
+  const [mergeId, setMergeId] = useState('');
+  const selected = state.projects.find((item) => item.id === selectedId) || state.projects[0] || null;
+  const timeline = useMemo(() => selected ? projectTimeline(selected, state, index, artifacts) : [], [artifacts, index, selected, state]);
+  const languages = [...new Set(timeline.map((item) => item.language).filter(Boolean))] as string[];
+  const filtered = timeline.filter((item) => {
+    const textMatch = !query || `${item.title} ${item.source}`.toLowerCase().includes(query.toLowerCase());
+    const kindMatch = kind === 'all' || item.kind === kind;
+    const languageMatch = language === 'all' || item.language === language;
+    const date = item.time ? new Date(item.time * 1000).toISOString().slice(0, 10) : '';
+    return textMatch && kindMatch && languageMatch && (!startDate || date >= startDate) && (!endDate || date <= endDate);
+  });
+  const groups = new Map<string, ProjectTimelineItem[]>();
+  filtered.forEach((item) => {
+    const month = item.time ? formatMonth(item.time) : 'Undated';
+    groups.set(month, [...(groups.get(month) || []), item]);
+  });
+
+  function confirm(candidate: ProjectCandidate) {
+    const now = Date.now();
+    const id = Math.max(0, ...state.projects.map((item) => item.id)) + 1;
+    const project: ArchiveProject = { id, name: candidate.name, normalizedName: candidate.normalizedName, createdAt: now, updatedAt: now };
+    const memberships = candidate.conversationIds.map((conversationId) => {
+      const conversation = getConversationById(index, conversationId);
+      return { projectId: id, targetType: 'conversation' as const, targetId: conversationId, conversationId, title: conversation?.title || candidate.name, source: 'detected' as const, createdAt: now };
+    });
+    onChange({ ...state, projects: [...state.projects, project], candidates: state.candidates.filter((item) => item.id !== candidate.id), memberships: [...state.memberships, ...memberships] });
+    setSelectedId(id);
+  }
+
+  function mergeProject() {
+    if (!selected || !mergeId) return;
+    const sourceId = Number(mergeId);
+    const source = state.projects.find((item) => item.id === sourceId);
+    if (!source) return;
+    const remapped = state.memberships.map((item) => item.projectId === sourceId ? { ...item, projectId: selected.id } : item);
+    const unique = [...new Map(remapped.map((item) => [`${item.projectId}:${targetKey(item)}`, item])).values()];
+    onChange({
+      ...state,
+      projects: state.projects.filter((item) => item.id !== sourceId),
+      aliases: [...state.aliases.filter((item) => item.projectId !== sourceId), { projectId: selected.id, alias: source.name, normalizedAlias: source.normalizedName }],
+      memberships: unique,
+      exclusions: state.exclusions.map((item) => item.projectId === sourceId ? { ...item, projectId: selected.id } : item),
+    });
+    setMergeId('');
+  }
+
+  return (
+    <section className="explorer projects-view">
+      <div className="explorer-heading"><div className="brand-mark large"><Network size={24} /></div><div><p>Rule-based discovery</p><h2>Project Intelligence</h2></div></div>
+      <div className="project-scanbar"><div><strong>{state.projects.length} projects</strong><span>{state.candidates.length} candidates awaiting review{state.scanRuns[0] ? ` · scanned ${new Date(state.scanRuns[0].scannedAt).toLocaleString()}` : ''}</span></div><button className="toolbar-button active" type="button" onClick={onScan} disabled={busy}><ScanSearch size={16} />{busy ? 'Scanning...' : 'Scan projects'}</button></div>
+      <div className="project-layout">
+        <aside className="project-review">
+          <h3>Review queue</h3>
+          {state.candidates.map((candidate) => <article className="candidate-row" key={candidate.id}><div><strong>{candidate.name}</strong><span>{candidate.conversationIds.length} conversations · {candidate.monthCount} months · score {candidate.score.toFixed(0)}</span></div><div className="evidence-row">{candidate.evidence.map((item, index) => <span key={`${item.evidenceType}-${index}`}>{item.evidenceType} {item.weight.toFixed(0)}</span>)}</div><small>{formatDate(candidate.firstTime)} to {formatDate(candidate.lastTime)}</small><div><button className="toolbar-button active" type="button" onClick={() => confirm(candidate)}>Confirm</button><button className="toolbar-button" type="button" onClick={() => onChange({ ...state, candidates: state.candidates.filter((item) => item.id !== candidate.id), dismissedCandidates: [...state.dismissedCandidates, candidate.normalizedName] })}>Dismiss</button></div></article>)}
+          {!state.candidates.length ? <p className="empty-note">Run a scan to discover recurring project signals.</p> : null}
+          <h3>Projects</h3>
+          {state.projects.map((project) => <button className={selected?.id === project.id ? 'project-row active' : 'project-row'} type="button" key={project.id} onClick={() => setSelectedId(project.id)}><span>{project.name}</span><small>{state.memberships.filter((item) => item.projectId === project.id).length} curated items</small></button>)}
+        </aside>
+        <section className="project-dashboard">
+          {selected ? <>
+            <div className="project-dashboard-head"><div><span>Confirmed project</span><h3>{selected.name}</h3><p>{timeline.length} related conversations and artifacts</p></div><div className="project-curation">
+              <form onSubmit={(event) => { event.preventDefault(); const name = rename.trim(); if (!name) return; onChange({ ...state, projects: state.projects.map((item) => item.id === selected.id ? { ...item, name, normalizedName: normalizeProjectName(name), updatedAt: Date.now() } : item) }); setRename(''); }}><input value={rename} onChange={(event) => setRename(event.target.value)} placeholder="Rename project" /><button className="toolbar-button" type="submit">Rename</button></form>
+              <form onSubmit={(event) => { event.preventDefault(); const value = alias.trim(); if (!value) return; onChange({ ...state, aliases: [...state.aliases, { projectId: selected.id, alias: value, normalizedAlias: normalizeProjectName(value) }] }); setAlias(''); }}><input value={alias} onChange={(event) => setAlias(event.target.value)} placeholder="Add alias" /><button className="toolbar-button" type="submit">Alias</button></form>
+              {state.projects.length > 1 ? <div className="merge-control"><select value={mergeId} onChange={(event) => setMergeId(event.target.value)}><option value="">Merge project...</option>{state.projects.filter((item) => item.id !== selected.id).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select><button className="icon-only" type="button" title="Merge into selected project" disabled={!mergeId} onClick={mergeProject}><GitMerge size={16} /></button></div> : null}
+            </div></div>
+            <div className="project-stats"><Stat label="Conversations" value={timeline.filter((item) => item.kind === 'conversation').length.toLocaleString()} /><Stat label="Code" value={timeline.filter((item) => item.kind === 'code').length.toLocaleString()} /><Stat label="Documents" value={timeline.filter((item) => item.kind === 'document').length.toLocaleString()} /><Stat label="Assets & links" value={timeline.filter((item) => item.kind === 'asset' || item.kind === 'link').length.toLocaleString()} /></div>
+            <div className="project-filters"><label><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter project activity" /></label><select value={kind} onChange={(event) => setKind(event.target.value)}>{['all', 'conversation', 'code', 'document', 'asset', 'link'].map((value) => <option value={value} key={value}>{value}</option>)}</select><select value={language} onChange={(event) => setLanguage(event.target.value)}><option value="all">all languages</option>{languages.map((value) => <option value={value} key={value}>{value}</option>)}</select><input aria-label="Project activity from" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /><input aria-label="Project activity to" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></div>
+            <div className="project-timeline">{[...groups].map(([month, items]) => <section key={month}><h4>{month}</h4>{items.map((item) => <div className={item.release ? 'timeline-item release' : 'timeline-item'} key={`${item.kind}-${item.targetId}`}><button type="button" onClick={() => onOpen(item)}><span>{item.release ? 'Release milestone' : item.kind}</span><strong>{item.title}</strong><small>{formatDate(item.time)}{item.language ? ` · ${item.language}` : ''}</small></button><button className="icon-only" type="button" title="Exclude from project" onClick={() => onChange({ ...state, exclusions: [...state.exclusions, { projectId: selected.id, targetType: item.targetType, targetId: item.targetId }] })}><X size={14} /></button></div>)}</section>)}{!filtered.length ? <p className="empty-note">No project activity matches those filters.</p> : null}</div>
+          </> : <div className="project-empty"><Network size={32} /><h3>No confirmed projects</h3><p>Scan the archive and confirm a candidate to build its dashboard.</p></div>}
+        </section>
       </div>
     </section>
   );
@@ -1898,6 +2101,8 @@ export default function App() {
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
   const [viewerState, setViewerState] = useState<ViewerState>(() => readViewerState());
   const [knowledgeState, setKnowledgeState] = useState<KnowledgeState>(() => readKnowledgeState());
+  const [projectState, setProjectState] = useState<ProjectState>(() => readProjectState());
+  const [projectBusy, setProjectBusy] = useState(false);
   const [organizerTarget, setOrganizerTarget] = useState<KnowledgeTarget | null>(null);
   const [activeView, setActiveView] = useState<AppView>('dashboard');
   const [selected, setSelected] = useState<ConversationSummary | null>(null);
@@ -1923,6 +2128,7 @@ export default function App() {
         if (status.artifacts) setArtifacts(status.artifacts);
         setViewerState(status.viewerState);
         setKnowledgeState(status.knowledgeState.tags.length ? status.knowledgeState : createEmptyKnowledgeState());
+        setProjectState(status.projectState);
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   }, [setArtifacts, setError, setIndex]);
@@ -1967,6 +2173,10 @@ export default function App() {
   useEffect(() => {
     if (!isTauriRuntime()) window.localStorage.setItem(KNOWLEDGE_STATE_KEY, JSON.stringify(knowledgeState));
   }, [knowledgeState]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) window.localStorage.setItem(PROJECT_STATE_KEY, JSON.stringify(projectState));
+  }, [projectState]);
 
   useEffect(() => {
     if (!isTauriRuntime() || !index || !libraryStatus || libraryStatus.stateMigrated) return;
@@ -2038,6 +2248,27 @@ export default function App() {
       saveKnowledgeState(next)
         .then(setKnowledgeState)
         .catch((err) => console.error('Could not save knowledge state', err));
+    }
+  }
+
+  function applyProjectState(next: ProjectState) {
+    setProjectState(next);
+    if (isTauriRuntime()) saveProjectState(next).then(setProjectState).catch((err) => console.error('Could not save project state', err));
+  }
+
+  async function runProjectScan() {
+    setProjectBusy(true);
+    try {
+      if (isTauriRuntime()) {
+        const next = await scanProjects();
+        if (next) setProjectState(next);
+      } else if (index) {
+        setProjectState(scanProjectsInBrowser(index, knowledgeState, projectState));
+      }
+    } catch (err) {
+      console.error('Could not scan projects', err);
+    } finally {
+      setProjectBusy(false);
     }
   }
 
@@ -2197,6 +2428,7 @@ export default function App() {
                 setLibraryStatus(status);
                 setViewerState(status.viewerState);
                 setKnowledgeState(status.knowledgeState.tags.length ? status.knowledgeState : createEmptyKnowledgeState());
+                setProjectState(status.projectState);
               }
               setLibraryMessage(`Imported ${result.index.totals.conversations.toLocaleString()} conversations.`);
             }
@@ -2220,7 +2452,7 @@ export default function App() {
   }
 
   return (
-    <div className={activeView === 'code' || activeView === 'documents' || activeView === 'assets' || activeView === 'knowledge' ? 'app-shell explorer-open' : 'app-shell'}>
+    <div className={activeView === 'code' || activeView === 'documents' || activeView === 'assets' || activeView === 'knowledge' || activeView === 'projects' ? 'app-shell explorer-open' : 'app-shell'}>
       <Sidebar
         index={index}
         conversations={filtered.conversations}
@@ -2252,6 +2484,10 @@ export default function App() {
         onKnowledge={() => {
           setSelected(null);
           setActiveView('knowledge');
+        }}
+        onProjects={() => {
+          setSelected(null);
+          setActiveView('projects');
         }}
       />
       <main className="reader" ref={mainRef} onScroll={handleReaderScroll}>
@@ -2304,13 +2540,20 @@ export default function App() {
           <AssetExplorer artifacts={assetArtifacts} onOpenSource={openArtifactSource} onOpenAsset={setLightboxAsset} onOrganize={setOrganizerTarget} />
         ) : activeView === 'knowledge' ? (
           <KnowledgeView state={knowledgeState} onOpen={setOrganizerTarget} />
+        ) : activeView === 'projects' ? (
+          <ProjectIntelligenceView index={index} artifacts={artifacts} state={projectState} busy={projectBusy} onScan={() => void runProjectScan()} onChange={applyProjectState} onOpen={(target) => {
+            if (target.targetType === 'conversation') {
+              const next = getConversationById(index, target.conversationId);
+              if (next) openConversation(next);
+            } else setOrganizerTarget(target);
+          }} />
         ) : (
           <Dashboard index={index} artifacts={artifacts} viewerState={viewerState} onSelect={openConversation} />
         )}
       </main>
       <RightRail index={index} messages={displayedMessages} bookmarks={allBookmarks} onSelectBookmark={selectBookmark} />
       <Lightbox asset={lightboxAsset} onClose={() => setLightboxAsset(null)} />
-      {organizerTarget ? <KnowledgeOrganizer target={organizerTarget} state={knowledgeState} onChange={applyKnowledgeState} onClose={() => setOrganizerTarget(null)} /> : null}
+      {organizerTarget ? <KnowledgeOrganizer target={organizerTarget} state={knowledgeState} onChange={applyKnowledgeState} onClose={() => setOrganizerTarget(null)} projects={projectState} onProjectsChange={applyProjectState} /> : null}
     </div>
   );
 }

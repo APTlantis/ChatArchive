@@ -1,6 +1,7 @@
 param([switch]$SkipInstaller)
 $ErrorActionPreference='Stop'
-$root='D:\Chat';$qa=Join-Path $root '.qa';New-Item -ItemType Directory -Force -Path $qa | Out-Null
+$root=(Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$qa=Join-Path $root '.qa';New-Item -ItemType Directory -Force -Path $qa | Out-Null
 $started=Get-Date
 $steps=[ordered]@{}
 Push-Location $root
@@ -9,7 +10,7 @@ try{
   & npm run build;if($LASTEXITCODE){throw 'Frontend build failed'};$steps.frontendBuild='pass'
   & cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check;if($LASTEXITCODE){throw 'Rust formatting failed'};$steps.rustfmt='pass'
   & cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings;if($LASTEXITCODE){throw 'Clippy failed'};$steps.clippy='pass'
-  $env:CHATARCHIVE_IMPORT_SMOKE_SOURCE='D:\Chat\openai-export'
+  $env:CHATARCHIVE_IMPORT_SMOKE_SOURCE=Join-Path $root 'openai-export'
   & cargo test --manifest-path src-tauri/Cargo.toml;if($LASTEXITCODE){throw 'Rust tests failed'};$steps.rustTests='pass'
   & npx playwright test;if($LASTEXITCODE){throw 'Playwright failed'};$steps.playwright='pass'
   & npm run tauri:build;if($LASTEXITCODE){throw 'Tauri build failed'};$steps.tauriBuild='pass'
