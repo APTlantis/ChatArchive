@@ -31,6 +31,8 @@ The currently verified archive contains 733 conversations, 29,861 visible messag
 
 > **Release status:** Phase 1 and Phase 2A-2C are implemented, but Stage 3 is intentionally blocked by the Phase 2 release gate. The functional, data-integrity, accessibility, native-import, and packaging checks pass; the Windows installer lifecycle must be rerun from a known installation baseline before the gate can be cleared. See the [Phase 2 QA report](docs/Phase2-QA-Report.md) for results, hashes, performance baselines, and the exact blocker.
 
+> **Latest patch build:** v0.1.1 was rebuilt on July 22, 2026 with the Blue Slate visual pass, new ChatArchive logo/icon assets, and a packaged Windows GUI subsystem so release builds do not spawn a terminal. See [Release v0.1.1](docs/Release-v0.1.1.md) for hashes and verification evidence. This patch build does not clear the installer lifecycle blocker above.
+
 ## Why This Exists
 
 Most chat exports are useful but awkward. They preserve data, not continuity. This project tries to make exported conversations browsable, inspectable, and reusable:
@@ -113,6 +115,8 @@ The June 30, 2026 audit currently records:
 - The installer-state restoration check failed, so `qa:phase2` is not yet a green release gate.
 
 Do not run the installer lifecycle casually on a workstation with an installation you cannot reconstruct. The hardened runner snapshots registered package information and installer payloads, but a known baseline is still required for a meaningful restoration assertion.
+
+The July 22, 2026 v0.1.1 patch build additionally verified `npm run build`, `npm test`, `npm run test:rust`, `npm run test:ui`, and `npm run tauri:build`. The rebuilt `chatarchive.exe` reports the `Windows GUI` subsystem, and the generated MSI/NSIS installers are hashed in the release note.
 
 The app will ask for a library folder. A normal library layout looks like:
 

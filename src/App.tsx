@@ -3,6 +3,7 @@ import mermaid from 'mermaid';
 import zenuml from '@mermaid-js/mermaid-zenuml';
 import '../prism/prism.js';
 import '../prism/prism.css';
+import chatArchiveLogo from './assets/chat_archive_logo_128.png';
 import {
   Archive,
   ArrowLeft,
@@ -967,7 +968,7 @@ function Sidebar({
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="brand-row">
         <div className="brand-mark">
-          <Archive size={18} />
+          <img src={chatArchiveLogo} alt="" aria-hidden="true" />
         </div>
         {!collapsed && (
           <div>
@@ -1148,7 +1149,7 @@ function Dashboard({
     <section className="dashboard">
       <div className="dashboard-heading">
         <div className="brand-mark large">
-          <BarChart3 size={24} />
+          <img src={chatArchiveLogo} alt="" aria-hidden="true" />
         </div>
         <div>
           <p>Local archive dashboard</p>

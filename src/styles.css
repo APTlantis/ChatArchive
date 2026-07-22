@@ -192,11 +192,18 @@ a:hover {
   display: grid;
   width: 36px;
   height: 36px;
+  overflow: hidden;
   place-items: center;
   border: 1px solid var(--border-action-soft);
   border-radius: 8px;
   background: var(--surface-selected);
   color: var(--accent);
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .brand-row h1 {

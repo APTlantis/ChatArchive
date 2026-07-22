@@ -19,7 +19,7 @@ tags = []
 type = "desktop-application"
 portfolio_class = "project"
 stage = "blocked"
-version = "0.1.0"
+version = "0.1.1"
 
 [governance]
 primary_standard = "DRS"
@@ -98,7 +98,47 @@ required_child_project_files = [
 level = "metadata-reconciled"
 evidence = "package.json, README.md, tests, and documented installer gate"
 reviewed = "2026-07-22"
-build_verified = false
-tests_verified = false
+build_verified = true
+tests_verified = true
 artifact_verified = false
 release_verified = false
+
+[release]
+version = "0.1.1"
+status = "patch-build-produced"
+date = "2026-07-22"
+summary = "Patch build for Blue Slate visual adoption, new ChatArchive logo/icon assets, and packaged Windows GUI subsystem so release builds do not spawn a console window."
+release_note = "docs\\Release-v0.1.1.md"
+release_claim = false
+known_blocker = "Full DRS release verification remains blocked until the destructive installer lifecycle audit is rerun from a known installation baseline."
+
+[release.verified]
+frontend_build = true
+unit_tests = true
+rust_tests = true
+ui_tests = true
+tauri_build = true
+windows_gui_subsystem = true
+installer_lifecycle = false
+
+[[release.artifacts]]
+name = "ChatArchive_0.1.1_x64_en-US.msi"
+path = "src-tauri\\target\\release\\bundle\\msi\\ChatArchive_0.1.1_x64_en-US.msi"
+kind = "msi"
+size = 7028736
+sha256 = "F53671C51A5DCDDA8F510B96352448A75EEEBD3972239754D7C559048839A3A0"
+
+[[release.artifacts]]
+name = "ChatArchive_0.1.1_x64-setup.exe"
+path = "src-tauri\\target\\release\\bundle\\nsis\\ChatArchive_0.1.1_x64-setup.exe"
+kind = "nsis"
+size = 5392174
+sha256 = "ACDE89CED4FD40324F4D8CB61552B710AC6E13EBB52CF28B2D039DA9A3C62F78"
+
+[[release.artifacts]]
+name = "chatarchive.exe"
+path = "src-tauri\\target\\release\\chatarchive.exe"
+kind = "exe"
+size = 15828992
+sha256 = "CC4FB833C34F0D2EA9B1EFC9890ECE08AFDA07A6CE3072790E8B4CAD4C9DAC51"
+subsystem = "Windows GUI"
