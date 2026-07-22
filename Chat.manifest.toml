@@ -3,7 +3,7 @@ schema = "APTlantis Entity Manifest"
 schema_version = "2.4"
 manifest_type = "project"
 canonical_name = "Chat.manifest.toml"
-last_updated = "2026-07-08"
+last_updated = "2026-07-22"
 maintainer = "Herb"
 
 [entity]
@@ -27,10 +27,12 @@ primary_standard_path = "D:\\.library\\aptlantis_core\\DRS\\README.md"
 additional_standards = [
     "WGS",
     "PPS",
+    "Blue Slate",
 ]
 additional_standard_paths = [
     "D:\\.library\\aptlantis_core\\WGS\\README.md",
     "D:\\.library\\aptlantis_core\\PPS\\README.md",
+    "D:\\.library\\aptlantis_core\\blue.slate\\Project-README.md",
 ]
 inherits_from = "..\\DRS.manifest.toml"
 
@@ -49,6 +51,16 @@ readme = "README.md"
 [relationships]
 parent = "D:\\DRS"
 child_projects = []
+depends_on_projects = [
+    "D:\\.library\\aptlantis_core\\blue.slate",
+]
+
+[visual_system]
+theme = "Blue Slate"
+theme_path = "D:\\.library\\aptlantis_core\\blue.slate"
+adoption_status = "explicit visual-system dependency"
+adoption_scope = "Color tokens, typography stack, focus treatment, code surfaces, and status accents only; existing ChatArchive layout and product behavior remain authoritative."
+release_claim = false
 
 [state]
 stability = "mostly-stable"
@@ -85,7 +97,7 @@ required_child_project_files = [
 [verification]
 level = "metadata-reconciled"
 evidence = "package.json, README.md, tests, and documented installer gate"
-reviewed = "2026-07-08"
+reviewed = "2026-07-22"
 build_verified = false
 tests_verified = false
 artifact_verified = false

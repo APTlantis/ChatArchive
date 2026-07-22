@@ -1,28 +1,100 @@
 :root {
   color-scheme: dark;
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #050607;
-  color: #f4f7f8;
+    "Aptos", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  background: var(--bs-bg);
+  color: var(--bs-text);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --bg: #050607;
-  --rail: #090b0d;
-  --rail-2: #0d1114;
-  --panel: #101418;
-  --panel-2: #151a1f;
-  --line: #232b31;
-  --line-soft: #1a2025;
-  --text: #f4f7f8;
-  --muted: #9ca8af;
-  --soft: #c7d0d5;
-  --accent: #49c7d7;
-  --accent-2: #8af0d2;
-  --user: #1a2c2f;
-  --assistant: #0f1418;
-  --code: #060809;
-  --danger: #f18b8b;
+
+  --bs-abyss: #050913;
+  --bs-deep-navy: #0b1728;
+  --bs-navy: #172536;
+  --bs-slate: #262f39;
+  --bs-steel: #40423f;
+  --bs-steel-blue: #192e46;
+  --bs-ocean-blue: #29384a;
+  --bs-dusk: #36485a;
+  --bs-blue-grey: #53606a;
+  --bs-cool-grey: #6f7e87;
+  --bs-mist-blue: #627786;
+  --bs-mist-grey: #768892;
+  --bs-pale-mist: #98a2a2;
+  --bs-sea-foam: #b9c9c5;
+  --bs-off-white: #e1e7db;
+  --bs-electric-cyan: #00d8ff;
+  --bs-arctic-cyan: #65f2ff;
+  --bs-teal: #21c6b8;
+  --bs-aqua-teal: #3ad1c3;
+  --bs-amber: #ff884d;
+  --bs-brass: #d9a441;
+  --bs-violet: #9c7cff;
+  --bs-indigo: #6a5bff;
+  --bs-success: #30d58c;
+  --bs-verified: #6fe3a4;
+
+  --bs-bg: var(--bs-abyss);
+  --bs-bg-soft: var(--bs-deep-navy);
+  --bs-panel: var(--bs-navy);
+  --bs-panel-raised: var(--bs-slate);
+  --bs-panel-blue: var(--bs-steel-blue);
+  --bs-border: var(--bs-dusk);
+  --bs-border-soft: color-mix(in oklab, var(--bs-blue-grey) 58%, transparent);
+  --bs-text: var(--bs-off-white);
+  --bs-text-soft: var(--bs-sea-foam);
+  --bs-text-muted: var(--bs-pale-mist);
+  --bs-link: var(--bs-arctic-cyan);
+  --bs-action: var(--bs-electric-cyan);
+  --bs-action-soft: var(--bs-teal);
+  --bs-focus: var(--bs-arctic-cyan);
+  --bs-warning: var(--bs-amber);
+  --bs-attention: var(--bs-brass);
+  --bs-taxonomy: var(--bs-violet);
+  --bs-archive: var(--bs-indigo);
+  --bs-success-state: var(--bs-success);
+  --bs-verified-state: var(--bs-verified);
+  --bs-font-display: "Aptos Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --bs-font-sans: "Aptos", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --bs-font-mono: "Cascadia Code", "Cascadia Mono", "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --bs-shadow-panel: 0 20px 70px rgb(0 0 0 / 0.32), inset 0 1px 0 rgb(225 231 219 / 0.07);
+  --bs-shadow-signal: 0 0 0 1px rgb(101 242 255 / 0.3), 0 0 26px rgb(0 216 255 / 0.22);
+
+  --bg: var(--bs-bg);
+  --rail: var(--bs-bg-soft);
+  --rail-2: var(--bs-panel-blue);
+  --panel: var(--bs-panel);
+  --panel-2: var(--bs-panel-raised);
+  --line: var(--bs-border);
+  --line-soft: var(--bs-border-soft);
+  --text: var(--bs-text);
+  --muted: var(--bs-text-muted);
+  --soft: var(--bs-text-soft);
+  --accent: var(--bs-action);
+  --accent-2: var(--bs-aqua-teal);
+  --warning: var(--bs-warning);
+  --attention: var(--bs-attention);
+  --taxonomy: var(--bs-taxonomy);
+  --archive: var(--bs-archive);
+  --success: var(--bs-success-state);
+  --verified: var(--bs-verified-state);
+  --user: var(--bs-steel-blue);
+  --assistant: color-mix(in oklab, var(--bs-panel) 78%, var(--bs-bg));
+  --code: var(--bs-abyss);
+  --danger: var(--bs-warning);
+  --surface-low: color-mix(in oklab, var(--bs-bg) 72%, var(--bs-panel));
+  --surface-control: color-mix(in oklab, var(--bs-panel-blue) 54%, var(--bs-bg));
+  --surface-selected: color-mix(in oklab, var(--bs-teal) 18%, var(--bs-panel-blue));
+  --surface-code-head: color-mix(in oklab, var(--bs-bg-soft) 72%, var(--bs-panel));
+  --surface-hidden: color-mix(in oklab, var(--bs-warning) 11%, var(--bs-bg));
+  --border-action-soft: color-mix(in oklab, var(--bs-action) 35%, transparent);
+  --border-action: color-mix(in oklab, var(--bs-action) 55%, transparent);
+  --border-action-strong: color-mix(in oklab, var(--bs-action) 70%, transparent);
+  --border-warning-soft: color-mix(in oklab, var(--bs-warning) 30%, transparent);
+  --warning-bg: color-mix(in oklab, var(--bs-warning) 9%, transparent);
+  --overlay-border: color-mix(in oklab, var(--bs-text) 5%, transparent);
+  --scroll-thumb: var(--bs-blue-grey);
+  --scroll-thumb-hover: var(--bs-cool-grey);
 }
 
 * {
@@ -53,8 +125,18 @@ button {
   color: inherit;
 }
 
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--bs-focus);
+  outline-offset: 2px;
+  box-shadow: var(--bs-shadow-signal);
+}
+
 a {
-  color: var(--accent);
+  color: var(--bs-link);
   text-decoration: none;
 }
 
@@ -70,7 +152,7 @@ a:hover {
   min-height: 0;
   overflow: hidden;
   background:
-    linear-gradient(90deg, rgba(73, 199, 215, 0.04), transparent 22%),
+    linear-gradient(90deg, color-mix(in oklab, var(--bs-action) 5%, transparent), transparent 22%),
     var(--bg);
 }
 
@@ -111,9 +193,9 @@ a:hover {
   width: 36px;
   height: 36px;
   place-items: center;
-  border: 1px solid rgba(73, 199, 215, 0.35);
+  border: 1px solid var(--border-action-soft);
   border-radius: 8px;
-  background: #0d181b;
+  background: var(--surface-selected);
   color: var(--accent);
 }
 
@@ -147,7 +229,7 @@ a:hover {
   gap: 7px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #0d1114;
+  background: var(--surface-control);
   color: var(--soft);
   cursor: pointer;
 }
@@ -167,15 +249,15 @@ a:hover {
 .icon-only:hover,
 .icon-button:hover,
 .toolbar-button:hover {
-  border-color: rgba(73, 199, 215, 0.55);
+  border-color: var(--border-action);
   color: var(--text);
 }
 
 .toolbar-button.active,
 .mini-action.active,
 .filter-chip.active {
-  border-color: rgba(73, 199, 215, 0.7);
-  background: #102226;
+  border-color: var(--border-action-strong);
+  background: var(--surface-selected);
   color: var(--accent-2);
 }
 
@@ -212,7 +294,7 @@ a:hover {
   height: 40px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #050708;
+  background: var(--surface-low);
   color: var(--muted);
 }
 
@@ -249,7 +331,7 @@ a:hover {
   gap: 5px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #0d1114;
+  background: var(--surface-control);
   color: var(--soft);
   cursor: pointer;
   font-size: 11px;
@@ -268,9 +350,9 @@ a:hover {
 .filter-error {
   margin: -3px 14px 10px;
   padding: 8px 10px;
-  border: 1px solid rgba(241, 139, 139, 0.26);
+  border: 1px solid var(--border-warning-soft);
   border-radius: 8px;
-  background: rgba(241, 139, 139, 0.08);
+  background: var(--warning-bg);
   color: var(--danger);
   font-size: 12px;
   line-height: 1.35;
@@ -296,7 +378,7 @@ a:hover {
   height: 32px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #050708;
+  background: var(--surface-low);
   color: var(--text);
   padding: 0 8px;
 }
@@ -323,7 +405,7 @@ a:hover {
   margin: 12px 8px 6px;
   padding: 5px 0;
   background: var(--rail);
-  color: #7f8b92;
+  color: var(--bs-mist-grey);
   font-size: 11px;
   font-weight: 800;
   line-height: 1;
@@ -348,7 +430,7 @@ a:hover {
   align-items: center;
   gap: 5px;
   overflow: hidden;
-  color: #eef3f5;
+  color: var(--text);
   font-size: 14px;
   font-weight: 610;
   line-height: 1.25;
@@ -370,7 +452,7 @@ a:hover {
 }
 
 .conversation-row.selected {
-  border-color: rgba(73, 199, 215, 0.48);
+  border-color: var(--border-action);
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
@@ -381,8 +463,8 @@ a:hover {
   overflow-y: scroll;
   scrollbar-gutter: stable;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.018), transparent 220px),
-    #07090b;
+    linear-gradient(180deg, color-mix(in oklab, var(--bs-text) 2%, transparent), transparent 220px),
+    var(--bg);
 }
 
 .topbar {
@@ -396,7 +478,7 @@ a:hover {
   min-height: 86px;
   padding: 18px clamp(20px, 5vw, 64px) 14px;
   border-bottom: 1px solid var(--line);
-  background: rgba(7, 9, 11, 0.92);
+  background: color-mix(in oklab, var(--bs-bg) 92%, transparent);
   backdrop-filter: blur(18px);
 }
 
@@ -506,7 +588,7 @@ a:hover {
 }
 
 .stat.warn strong {
-  color: #f3bc77;
+  color: var(--attention);
 }
 
 .dashboard-section {
@@ -558,7 +640,7 @@ a:hover {
   padding: 0 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #0b0f12;
+  background: var(--surface-control);
   color: var(--soft);
   font-size: 12px;
   font-weight: 720;
@@ -616,7 +698,7 @@ a:hover {
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #050708;
+  background: var(--surface-low);
   color: var(--muted);
 }
 
@@ -670,8 +752,8 @@ a:hover {
 
 .facet-row:hover,
 .facet-row.active {
-  border-color: rgba(73, 199, 215, 0.35);
-  background: #0b1417;
+  border-color: var(--border-action-soft);
+  background: var(--surface-selected);
 }
 
 .facet-row span {
@@ -700,7 +782,7 @@ a:hover {
   padding: 10px;
   border: 1px solid transparent;
   border-radius: 8px;
-  background: #0b0f12;
+  background: var(--surface-control);
   color: var(--soft);
   cursor: pointer;
   text-align: left;
@@ -708,7 +790,7 @@ a:hover {
 
 .artifact-row:hover,
 .artifact-row.selected {
-  border-color: rgba(73, 199, 215, 0.45);
+  border-color: var(--border-action);
 }
 
 .artifact-row.selected {
@@ -739,8 +821,8 @@ a:hover {
   display: -webkit-box;
   overflow: hidden;
   margin: 0;
-  color: #b9c4c9;
-  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  color: var(--soft);
+  font-family: var(--bs-font-mono);
   font-size: 11px;
   line-height: 1.42;
   -webkit-box-orient: vertical;
@@ -752,7 +834,7 @@ a:hover {
   padding: 10px;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
-  background: #0b0f12;
+  background: var(--surface-control);
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
@@ -776,9 +858,9 @@ a:hover {
   min-height: 24px;
   align-items: center;
   padding: 0 8px;
-  border: 1px solid rgba(73, 199, 215, 0.32);
+  border: 1px solid var(--border-action-soft);
   border-radius: 8px;
-  background: #0b1417;
+  background: var(--surface-selected);
   color: var(--accent-2);
   font-size: 11px;
   font-weight: 800;
@@ -812,7 +894,7 @@ a:hover {
   padding: 18px 20px;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
-  background: #0b0f12;
+  background: var(--surface-control);
 }
 
 .asset-artifact-list {
@@ -839,7 +921,7 @@ a:hover {
   padding: 0 0 9px;
   border: 1px solid transparent;
   border-radius: 8px;
-  background: #0b0f12;
+  background: var(--surface-control);
   color: var(--soft);
   cursor: pointer;
   text-align: left;
@@ -848,7 +930,7 @@ a:hover {
 
 .asset-artifact-row:hover,
 .asset-artifact-row.selected {
-  border-color: rgba(73, 199, 215, 0.45);
+  border-color: var(--border-action);
 }
 
 .asset-artifact-row.selected {
@@ -860,7 +942,7 @@ a:hover {
   width: 100%;
   height: 112px;
   object-fit: cover;
-  background: #030405;
+  background: var(--code);
 }
 
 .asset-image-fallback {
@@ -901,7 +983,7 @@ a:hover {
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #030405;
+  background: var(--code);
   cursor: zoom-in;
 }
 
@@ -920,9 +1002,9 @@ a:hover {
   justify-items: start;
   gap: 9px;
   padding: 20px;
-  border: 1px solid rgba(241, 139, 139, 0.28);
+  border: 1px solid var(--border-warning-soft);
   border-radius: 8px;
-  background: rgba(241, 139, 139, 0.06);
+  background: var(--warning-bg);
   color: var(--danger);
 }
 
@@ -943,7 +1025,7 @@ a:hover {
 }
 
 .missing-asset-diagnostic code {
-  color: #ffd2d2;
+  color: var(--bs-warning);
 }
 
 .asset-metadata {
@@ -972,7 +1054,7 @@ a:hover {
   padding: 10px;
   border: 1px solid transparent;
   border-radius: 8px;
-  background: #0b0f12;
+  background: var(--surface-control);
   color: var(--soft);
   text-align: left;
   cursor: pointer;
@@ -980,7 +1062,7 @@ a:hover {
 
 .dashboard-list button:hover,
 .bookmark-row:hover {
-  border-color: rgba(73, 199, 215, 0.42);
+  border-color: var(--border-action);
 }
 
 .dashboard-list span,
@@ -1056,9 +1138,9 @@ a:hover {
 .raw-pill {
   width: fit-content;
   padding: 2px 7px;
-  border: 1px solid #4d3c28;
+  border: 1px solid color-mix(in oklab, var(--attention) 42%, transparent);
   border-radius: 999px;
-  color: #f3bc77;
+  color: var(--attention);
 }
 
 .content-type {
@@ -1067,7 +1149,7 @@ a:hover {
 
 .message-body {
   min-width: 0;
-  border: 1px solid rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--overlay-border);
   border-radius: 8px;
   background: var(--assistant);
   padding: 18px 20px;
@@ -1086,12 +1168,12 @@ a:hover {
 }
 
 .hidden-message .message-body {
-  border-color: rgba(241, 139, 139, 0.22);
-  background: #17100f;
+  border-color: var(--border-warning-soft);
+  background: var(--surface-hidden);
 }
 
 .markdown-block {
-  color: #eef3f5;
+  color: var(--text);
   font-size: 15px;
   line-height: 1.68;
 }
@@ -1109,7 +1191,7 @@ a:hover {
 .markdown-block h4,
 .markdown-block h5 {
   margin: 20px 0 8px;
-  color: #ffffff;
+  color: var(--text);
   font-weight: 760;
   letter-spacing: 0;
 }
@@ -1135,9 +1217,9 @@ a:hover {
 .markdown-block code {
   padding: 2px 5px;
   border-radius: 5px;
-  background: rgba(255, 255, 255, 0.12);
-  color: #eafcff;
-  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  background: color-mix(in oklab, var(--bs-action) 10%, var(--bs-bg));
+  color: var(--bs-arctic-cyan);
+  font-family: var(--bs-font-mono);
   font-size: 0.9em;
 }
 
@@ -1145,7 +1227,7 @@ a:hover {
 .execution-card {
   overflow: hidden;
   margin: 14px 0;
-  border: 1px solid #1d2a31;
+  border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--code);
 }
@@ -1157,15 +1239,15 @@ a:hover {
   gap: 12px;
   min-height: 42px;
   padding: 7px 9px 7px 13px;
-  border-bottom: 1px solid #1b2227;
-  background: #0b0f12;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface-code-head);
 }
 
 .code-header span {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #b7c3c9;
+  color: var(--soft);
   font-size: 12px;
   font-weight: 750;
 }
@@ -1175,8 +1257,8 @@ pre {
   margin: 0;
   overflow: auto;
   padding: 16px;
-  color: #d9f7ff;
-  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  color: var(--soft);
+  font-family: var(--bs-font-mono);
   font-size: 13px;
   line-height: 1.55;
 }
@@ -1186,7 +1268,7 @@ pre {
   margin: 0;
   border-radius: 0;
   background: var(--code);
-  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  font-family: var(--bs-font-mono);
   font-size: 13px;
   line-height: 1.55;
   text-shadow: none;
@@ -1205,14 +1287,63 @@ pre {
   text-decoration: none;
 }
 
+.code-card .token.comment,
+.code-card .token.prolog,
+.code-card .token.doctype,
+.code-card .token.cdata {
+  color: var(--bs-mist-grey);
+}
+
+.code-card .token.punctuation {
+  color: var(--bs-pale-mist);
+}
+
+.code-card .token.keyword,
+.code-card .token.atrule,
+.code-card .token.selector {
+  color: var(--bs-arctic-cyan);
+}
+
+.code-card .token.string,
+.code-card .token.char,
+.code-card .token.inserted {
+  color: var(--bs-verified);
+}
+
+.code-card .token.number,
+.code-card .token.boolean,
+.code-card .token.constant {
+  color: var(--bs-brass);
+}
+
+.code-card .token.function,
+.code-card .token.class-name,
+.code-card .token.attr-name {
+  color: var(--bs-aqua-teal);
+}
+
+.code-card .token.property,
+.code-card .token.tag,
+.code-card .token.symbol,
+.code-card .token.deleted {
+  color: var(--bs-warning);
+}
+
+.code-card .token.operator,
+.code-card .token.entity,
+.code-card .token.url,
+.code-card .token.variable {
+  color: var(--bs-sea-foam);
+}
+
 .mermaid-card {
-  background: #071013;
+  background: var(--surface-control);
 }
 
 .mermaid-output {
   overflow: auto;
   padding: 18px;
-  background: #081216;
+  background: var(--surface-selected);
 }
 
 .mermaid-output svg {
@@ -1246,15 +1377,15 @@ pre {
 }
 
 .execution-card pre {
-  color: #d8dedf;
+  color: var(--soft);
 }
 
 .notice {
   padding: 12px 14px;
-  border: 1px solid rgba(241, 139, 139, 0.3);
+  border: 1px solid var(--border-warning-soft);
   border-radius: 8px;
-  background: rgba(241, 139, 139, 0.08);
-  color: #ffd2d2;
+  background: var(--warning-bg);
+  color: var(--warning);
 }
 
 .asset-grid {
@@ -1270,7 +1401,7 @@ pre {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #0b0f12;
+  background: var(--surface-control);
   color: var(--soft);
   text-align: left;
 }
@@ -1283,7 +1414,7 @@ button.asset {
   width: 100%;
   height: 120px;
   object-fit: cover;
-  background: #030405;
+  background: var(--code);
 }
 
 .asset span,
@@ -1320,7 +1451,7 @@ button.asset {
   padding: 5px 8px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: #0b0f12;
+  background: var(--surface-control);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1332,7 +1463,7 @@ button.asset {
   overflow-y: scroll;
   scrollbar-gutter: stable;
   border-left: 1px solid var(--line);
-  background: #080a0c;
+  background: var(--rail);
   padding: 18px 12px 20px;
 }
 
@@ -1340,7 +1471,7 @@ button.asset {
 .reader,
 .right-rail,
 pre {
-  scrollbar-color: #495158 #0b0f12;
+  scrollbar-color: var(--scroll-thumb) var(--surface-control);
   scrollbar-width: thin;
 }
 
@@ -1356,23 +1487,23 @@ pre::-webkit-scrollbar {
 .reader::-webkit-scrollbar-track,
 .right-rail::-webkit-scrollbar-track,
 pre::-webkit-scrollbar-track {
-  background: #0b0f12;
+  background: var(--surface-control);
 }
 
 .conversation-list::-webkit-scrollbar-thumb,
 .reader::-webkit-scrollbar-thumb,
 .right-rail::-webkit-scrollbar-thumb,
 pre::-webkit-scrollbar-thumb {
-  border: 3px solid #0b0f12;
+  border: 3px solid var(--surface-control);
   border-radius: 999px;
-  background: #495158;
+  background: var(--scroll-thumb);
 }
 
 .conversation-list::-webkit-scrollbar-thumb:hover,
 .reader::-webkit-scrollbar-thumb:hover,
 .right-rail::-webkit-scrollbar-thumb:hover,
 pre::-webkit-scrollbar-thumb:hover {
-  background: #68737a;
+  background: var(--scroll-thumb-hover);
 }
 
 .right-rail h2 {
@@ -1380,7 +1511,7 @@ pre::-webkit-scrollbar-thumb:hover {
   font-size: 13px;
   font-weight: 800;
   text-transform: uppercase;
-  color: #7f8b92;
+  color: var(--bs-mist-grey);
 }
 
 .outline-list {
@@ -1619,7 +1750,7 @@ pre::-webkit-scrollbar-thumb:hover {
   border: 1px solid var(--line);
   border-radius: 8px;
   outline: 0;
-  background: #050708;
+  background: var(--surface-low);
   color: var(--text);
 }
 
@@ -1642,7 +1773,7 @@ pre::-webkit-scrollbar-thumb:hover {
   padding: 10px;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
-  background: #0b0f12;
+  background: var(--surface-control);
 }
 
 .knowledge-note p {
@@ -1681,7 +1812,7 @@ pre::-webkit-scrollbar-thumb:hover {
   padding: 10px;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
-  background: #0b0f12;
+  background: var(--surface-control);
 }
 
 .knowledge-group > span {
@@ -1700,7 +1831,7 @@ pre::-webkit-scrollbar-thumb:hover {
   padding: 9px;
   border: 1px solid transparent;
   border-radius: 8px;
-  background: #080b0d;
+  background: var(--surface-low);
   color: var(--soft);
   cursor: pointer;
   text-align: left;
@@ -1708,7 +1839,7 @@ pre::-webkit-scrollbar-thumb:hover {
 
 .knowledge-group button:hover,
 .knowledge-item:hover {
-  border-color: rgba(73, 199, 215, 0.42);
+  border-color: var(--border-action);
 }
 
 .knowledge-group button small,
@@ -1800,7 +1931,7 @@ pre::-webkit-scrollbar-thumb:hover {
   padding: 10px;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
-  background: #0b0f12;
+  background: var(--surface-control);
 }
 
 .candidate-row > div:first-child {
@@ -1817,7 +1948,7 @@ pre::-webkit-scrollbar-thumb:hover {
 
 .evidence-row span {
   padding: 3px 6px;
-  border: 1px solid rgba(73, 199, 215, 0.28);
+  border: 1px solid var(--border-action-soft);
   border-radius: 8px;
   color: var(--accent-2);
 }
@@ -1830,7 +1961,7 @@ pre::-webkit-scrollbar-thumb:hover {
   padding: 9px;
   border: 1px solid transparent;
   border-radius: 8px;
-  background: #0b0f12;
+  background: var(--surface-control);
   color: var(--soft);
   cursor: pointer;
   text-align: left;
@@ -1838,7 +1969,7 @@ pre::-webkit-scrollbar-thumb:hover {
 
 .project-row:hover,
 .project-row.active {
-  border-color: rgba(73, 199, 215, 0.45);
+  border-color: var(--border-action);
 }
 
 .project-row small {
@@ -1853,7 +1984,7 @@ pre::-webkit-scrollbar-thumb:hover {
 
 .project-dashboard-head {
   align-items: flex-start;
-  background: #0b0f12;
+  background: var(--surface-control);
 }
 
 .project-dashboard-head > div:first-child > span {
@@ -1891,7 +2022,7 @@ pre::-webkit-scrollbar-thumb:hover {
   border: 1px solid var(--line);
   border-radius: 8px;
   outline: 0;
-  background: #050708;
+  background: var(--surface-low);
   color: var(--text);
   font: inherit;
 }
@@ -1917,7 +2048,7 @@ pre::-webkit-scrollbar-thumb:hover {
   padding-left: 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #050708;
+  background: var(--surface-low);
   color: var(--muted);
 }
 
@@ -1953,14 +2084,14 @@ pre::-webkit-scrollbar-thumb:hover {
   padding: 9px 10px;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
-  background: #0b0f12;
+  background: var(--surface-control);
   color: var(--soft);
   cursor: pointer;
   text-align: left;
 }
 
 .timeline-item > button:first-child:hover {
-  border-color: rgba(73, 199, 215, 0.45);
+  border-color: var(--border-action);
 }
 
 .timeline-item span,
@@ -1971,7 +2102,7 @@ pre::-webkit-scrollbar-thumb:hover {
 }
 
 .timeline-item.release > button:first-child {
-  border-color: rgba(138, 240, 210, 0.38);
+  border-color: color-mix(in oklab, var(--verified) 42%, transparent);
   box-shadow: inset 3px 0 0 var(--accent-2);
 }
 

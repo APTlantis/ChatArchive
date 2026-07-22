@@ -17,6 +17,12 @@ This document is the internal governance and handoff entry point. Existing `READ
 
 Governance metadata was reconciled on 2026-07-08: version `0.1.0`, lifecycle `blocked`, stage `blocked`. Evidence reviewed: package.json, README.md, tests, and documented installer gate. The build, tests, shipping artifact, and release posture were not executed during this metadata pass, so this classification is not a release-readiness claim.
 
+## Visual system
+
+ChatArchive explicitly adopts [Blue Slate](D:/.library/aptlantis_core/blue.slate/Project-README.md) as a visual-system dependency for color tokens, typography, focus treatment, code surfaces, and status accents. This adoption does not replace the current product layout, React/Tauri workflow, archive data model, or DRS release gates.
+
+This is a theme alignment only. The project remains `blocked` and not release-verified until the normal DRS build, packaging, installer, launch, hash, and documentation gates are completed.
+
 ## Structure and relationships
 
 This is registered as one independently governed project.
