@@ -17,6 +17,7 @@ import {
   Download,
   Eye,
   EyeOff,
+  FileArchive,
   FileText,
   FileImage,
   Home,
@@ -62,6 +63,7 @@ import {
   exportConversationMarkdown as exportConversationMarkdownDesktop,
   getLibraryStatus,
   importOpenAiExport,
+  importOpenAiExportFolder,
   isTauriRuntime,
   loadArchiveIndex,
   loadArtifactIndex,
@@ -2060,34 +2062,51 @@ function LibrarySetup({
   message,
   onChooseLibrary,
   onImport,
+  onImportFolder,
 }: {
   status: LibraryStatus | null;
   busy: boolean;
   message: string;
   onChooseLibrary: () => void;
   onImport: () => void;
+  onImportFolder: () => void;
 }) {
+  const hasLibrary = Boolean(status?.configured);
+  const libraryLabel = status?.libraryPath || 'No folder selected';
   return (
     <main className="boot-screen library-setup">
       <Archive size={34} />
-      <h1>Choose a durable archive library</h1>
-      <p>
-        ChatArchive now stores archive indexes and viewer state in SQLite, with conversations and assets in a filesystem library folder.
-      </p>
+      <h1>Set Up ChatArchive</h1>
+      <p>Choose where ChatArchive should keep its local library, then import the OpenAI export zip from your ChatGPT data download.</p>
+      <div className="setup-steps" aria-label="Setup steps">
+        <div className={hasLibrary ? 'setup-step complete' : 'setup-step active'}>
+          <span>{hasLibrary ? <Check size={14} /> : '1'}</span>
+          <strong>Library location</strong>
+        </div>
+        <div className={hasLibrary ? 'setup-step active' : 'setup-step'}>
+          <span>2</span>
+          <strong>OpenAI export zip</strong>
+        </div>
+      </div>
       <div className="setup-path">
-        <span>Library</span>
-        <strong>{status?.libraryPath || 'No folder selected'}</strong>
+        <span>ChatArchive library</span>
+        <strong>{libraryLabel}</strong>
       </div>
       <div className="setup-actions">
         <button className="toolbar-button" type="button" onClick={onChooseLibrary} disabled={busy}>
           <FileImage size={16} />
-          Choose library
+          Choose library folder
         </button>
         <button className="toolbar-button active" type="button" onClick={onImport} disabled={busy || !status?.configured}>
+          <FileArchive size={16} />
+          Choose OpenAI zip
+        </button>
+        <button className="toolbar-button" type="button" onClick={onImportFolder} disabled={busy || !status?.configured}>
           <Download size={16} />
-          Import OpenAI export
+          Use extracted folder
         </button>
       </div>
+      {status?.libraryError ? <p className="setup-message">{status.libraryError}</p> : null}
       {message ? <p className="setup-message">{message}</p> : null}
     </main>
   );
@@ -2131,7 +2150,21 @@ export default function App() {
         setKnowledgeState(status.knowledgeState.tags.length ? status.knowledgeState : createEmptyKnowledgeState());
         setProjectState(status.projectState);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+      .catch((err) => {
+        setLibraryStatus({
+          configured: false,
+          libraryPath: null,
+          libraryError: err instanceof Error ? err.message : String(err),
+          hasArchive: false,
+          stateMigrated: false,
+          index: null,
+          artifacts: null,
+          viewerState: createEmptyViewerState(),
+          knowledgeState: createEmptyKnowledgeState(),
+          projectState: createEmptyProjectState(),
+        });
+        setLibraryMessage(err instanceof Error ? err.message : String(err));
+      });
   }, [setArtifacts, setError, setIndex]);
 
   useEffect(() => {
@@ -2147,6 +2180,12 @@ export default function App() {
       setAssetArtifacts(artifacts?.assets || []);
       return;
     }
+    if (!libraryStatus?.configured || !artifacts) {
+      setCodeArtifacts([]);
+      setDocumentArtifacts([]);
+      setAssetArtifacts([]);
+      return;
+    }
     Promise.all([loadCodeArtifacts(), loadDocumentArtifacts(), loadAssetArtifacts()])
       .then(([code, documents, assets]) => {
         setCodeArtifacts(code);
@@ -2159,7 +2198,7 @@ export default function App() {
         setDocumentArtifacts(artifacts?.documents || []);
         setAssetArtifacts(artifacts?.assets || []);
       });
-  }, [artifacts]);
+  }, [artifacts, libraryStatus?.configured]);
 
   useEffect(() => {
     if (!index) return;
@@ -2255,6 +2294,32 @@ export default function App() {
   function applyProjectState(next: ProjectState) {
     setProjectState(next);
     if (isTauriRuntime()) saveProjectState(next).then(setProjectState).catch((err) => console.error('Could not save project state', err));
+  }
+
+  async function finishOpenAiImport(importer: (libraryPath?: string | null) => Promise<Awaited<ReturnType<typeof importOpenAiExport>>>) {
+    setLibraryBusy(true);
+    setLibraryMessage('Importing OpenAI export...');
+    try {
+      const result = await importer(libraryStatus?.libraryPath);
+      if (result) {
+        setIndex(result.index);
+        setArtifacts(result.artifacts);
+        const status = await getLibraryStatus();
+        if (status) {
+          setLibraryStatus(status);
+          setViewerState(status.viewerState);
+          setKnowledgeState(status.knowledgeState.tags.length ? status.knowledgeState : createEmptyKnowledgeState());
+          setProjectState(status.projectState);
+        }
+        setLibraryMessage(`Imported ${result.index.totals.conversations.toLocaleString()} conversations.`);
+      } else {
+        setLibraryMessage('');
+      }
+    } catch (err) {
+      setLibraryMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLibraryBusy(false);
+    }
   }
 
   async function runProjectScan() {
@@ -2416,29 +2481,8 @@ export default function App() {
             setLibraryBusy(false);
           }
         }}
-        onImport={async () => {
-          setLibraryBusy(true);
-          setLibraryMessage('Importing archive...');
-          try {
-            const result = await importOpenAiExport(libraryStatus?.libraryPath);
-            if (result) {
-              setIndex(result.index);
-              setArtifacts(result.artifacts);
-              const status = await getLibraryStatus();
-              if (status) {
-                setLibraryStatus(status);
-                setViewerState(status.viewerState);
-                setKnowledgeState(status.knowledgeState.tags.length ? status.knowledgeState : createEmptyKnowledgeState());
-                setProjectState(status.projectState);
-              }
-              setLibraryMessage(`Imported ${result.index.totals.conversations.toLocaleString()} conversations.`);
-            }
-          } catch (err) {
-            setLibraryMessage(err instanceof Error ? err.message : String(err));
-          } finally {
-            setLibraryBusy(false);
-          }
-        }}
+        onImport={() => void finishOpenAiImport(importOpenAiExport)}
+        onImportFolder={() => void finishOpenAiImport(importOpenAiExportFolder)}
       />
     );
   }

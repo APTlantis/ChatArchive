@@ -20,6 +20,7 @@ const ARTIFACTS_URL = '/archive-data/artifacts.json';
 export interface LibraryStatus {
   configured: boolean;
   libraryPath: string | null;
+  libraryError: string | null;
   hasArchive: boolean;
   stateMigrated: boolean;
   index: ArchiveIndex | null;
@@ -61,7 +62,18 @@ export async function selectLibraryFolder() {
 
 export async function importOpenAiExport(libraryPath?: string | null) {
   if (!isTauriRuntime()) throw new Error('Import is only available in the Tauri desktop app.');
-  const selected = await open({ directory: true, multiple: false, title: 'Choose OpenAI export folder' });
+  const selected = await open({
+    multiple: false,
+    title: 'Choose OpenAI export zip',
+    filters: [{ name: 'OpenAI export', extensions: ['zip'] }],
+  });
+  if (!selected || Array.isArray(selected)) return null;
+  return invoke<ImportSummary>('import_openai_export', { sourcePath: selected, libraryPath: libraryPath || null });
+}
+
+export async function importOpenAiExportFolder(libraryPath?: string | null) {
+  if (!isTauriRuntime()) throw new Error('Import is only available in the Tauri desktop app.');
+  const selected = await open({ directory: true, multiple: false, title: 'Choose extracted OpenAI export folder' });
   if (!selected || Array.isArray(selected)) return null;
   return invoke<ImportSummary>('import_openai_export', { sourcePath: selected, libraryPath: libraryPath || null });
 }

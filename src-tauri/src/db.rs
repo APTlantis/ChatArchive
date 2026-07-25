@@ -54,6 +54,10 @@ pub fn configured_library(app: &AppHandle) -> AppResult<Option<PathBuf>> {
     Ok(library)
 }
 
+pub fn saved_library_path(app: &AppHandle) -> AppResult<Option<PathBuf>> {
+    Ok(read_app_settings(app)?.library_path.map(PathBuf::from))
+}
+
 pub fn set_configured_library(app: &AppHandle, library: &Path) -> AppResult<()> {
     fs::create_dir_all(library).map_err(|err| format!("Could not create library folder: {err}"))?;
     allow_library_assets(app, library)?;

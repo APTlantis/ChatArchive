@@ -393,6 +393,7 @@ impl Default for ViewerState {
 pub struct LibraryStatus {
     pub configured: bool,
     pub library_path: Option<String>,
+    pub library_error: Option<String>,
     pub has_archive: bool,
     pub state_migrated: bool,
     pub index: Option<ArchiveIndex>,

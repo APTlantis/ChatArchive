@@ -1599,6 +1599,56 @@ pre::-webkit-scrollbar-thumb:hover {
   text-align: center;
 }
 
+.setup-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: min(620px, 100%);
+}
+
+.setup-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  text-align: left;
+}
+
+.setup-step span {
+  display: grid;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.setup-step strong {
+  overflow-wrap: anywhere;
+  color: inherit;
+  font-size: 13px;
+}
+
+.setup-step.active {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--line));
+  color: var(--text);
+}
+
+.setup-step.complete span {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent-2);
+}
+
 .setup-path {
   display: grid;
   gap: 6px;

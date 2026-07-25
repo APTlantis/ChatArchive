@@ -2,8 +2,10 @@
 /node_modules/
 /openai-export/
 /openai-history/
+/ChatArchive/
 /public/archive-assets/
 /public/archive-data/
+/public/archive-documents/
 /src-tauri/target/
 /.tmp-import-smoke/
 /.qa/

@@ -3,8 +3,11 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 const ROOT = process.cwd();
-const SOURCE_DIR = process.env.OPENAI_HISTORY_DIR || path.join(ROOT, 'openai-history');
-const SOURCE_JSON = path.join(SOURCE_DIR, 'conversations.json');
+const DEFAULT_SOURCE_DIRS = [path.join(ROOT, 'openai-export'), path.join(ROOT, 'openai-history')];
+const SOURCE_DIR =
+  process.env.OPENAI_HISTORY_DIR ||
+  DEFAULT_SOURCE_DIRS.find((dir) => fs.existsSync(dir)) ||
+  DEFAULT_SOURCE_DIRS[0];
 const OUT_DIR = path.join(ROOT, 'public', 'archive-data');
 const CONV_DIR = path.join(OUT_DIR, 'conversations');
 const ASSET_DIR = path.join(ROOT, 'public', 'archive-assets');
@@ -23,6 +26,29 @@ function ensureDir(dir) {
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+function discoverConversationFiles() {
+  const singleFile = path.join(SOURCE_DIR, 'conversations.json');
+  if (fs.existsSync(singleFile)) return [singleFile];
+
+  if (!fs.existsSync(SOURCE_DIR)) return [];
+
+  return fs
+    .readdirSync(SOURCE_DIR)
+    .filter((name) => /^conversations-\d+\.json$/i.test(name))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    .map((name) => path.join(SOURCE_DIR, name));
+}
+
+function readConversations(files) {
+  return files.flatMap((file) => {
+    const value = readJson(file);
+    if (!Array.isArray(value)) {
+      throw new Error(`Expected ${file} to contain an array of conversations`);
+    }
+    return value;
+  });
 }
 
 function writeJson(file, value) {
@@ -632,13 +658,17 @@ function cleanGeneratedDirs() {
 }
 
 function main() {
-  if (!fs.existsSync(SOURCE_JSON)) {
-    throw new Error(`Cannot find ${SOURCE_JSON}`);
+  const conversationFiles = discoverConversationFiles();
+  if (conversationFiles.length === 0) {
+    throw new Error(
+      `Cannot find conversations.json or conversations-*.json in ${SOURCE_DIR}. Set OPENAI_HISTORY_DIR to another export folder if needed.`,
+    );
   }
 
   cleanGeneratedDirs();
-  console.log(`Reading export: ${SOURCE_JSON}`);
-  const conversations = readJson(SOURCE_JSON);
+  console.log(`Reading export: ${SOURCE_DIR}`);
+  console.log(`Conversation files: ${conversationFiles.map((file) => path.basename(file)).join(', ')}`);
+  const conversations = readConversations(conversationFiles);
   const exportFiles = collectExportFiles();
   const assetIndex = buildAssetIndex(exportFiles);
   const copied = new Set();

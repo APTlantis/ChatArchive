@@ -5,8 +5,11 @@ use crate::models::*;
 use chrono::Utc;
 use rusqlite::{params, OptionalExtension};
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use tauri::AppHandle;
+use walkdir::WalkDir;
+use zip::ZipArchive;
 
 fn library_or_error(app: &AppHandle) -> AppResult<PathBuf> {
     let library =
@@ -24,11 +27,12 @@ fn open_library_db(app: &AppHandle) -> AppResult<(PathBuf, rusqlite::Connection)
 
 #[tauri::command]
 pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
-    let library = db::configured_library(&app)?;
+    let library = db::saved_library_path(&app)?;
     let Some(library) = library else {
         return Ok(LibraryStatus {
             configured: false,
             library_path: None,
+            library_error: None,
             has_archive: false,
             state_migrated: false,
             index: None,
@@ -38,7 +42,52 @@ pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
             project_state: ProjectState::default(),
         });
     };
-    db::ensure_library_layout(&library)?;
+    if !library.exists() {
+        return Ok(LibraryStatus {
+            configured: false,
+            library_path: Some(library.to_string_lossy().to_string()),
+            library_error: Some("The saved library folder is no longer available. Choose a library folder to continue.".to_string()),
+            has_archive: false,
+            state_migrated: false,
+            index: None,
+            artifacts: None,
+            viewer_state: ViewerState::default(),
+            knowledge_state: KnowledgeState::default(),
+            project_state: ProjectState::default(),
+        });
+    }
+    if !library.is_dir() {
+        return Ok(LibraryStatus {
+            configured: false,
+            library_path: Some(library.to_string_lossy().to_string()),
+            library_error: Some(
+                "The saved library location is not a folder. Choose a library folder to continue."
+                    .to_string(),
+            ),
+            has_archive: false,
+            state_migrated: false,
+            index: None,
+            artifacts: None,
+            viewer_state: ViewerState::default(),
+            knowledge_state: KnowledgeState::default(),
+            project_state: ProjectState::default(),
+        });
+    }
+    db::configured_library(&app)?;
+    if let Err(err) = db::ensure_library_layout(&library) {
+        return Ok(LibraryStatus {
+            configured: false,
+            library_path: Some(library.to_string_lossy().to_string()),
+            library_error: Some(err),
+            has_archive: false,
+            state_migrated: false,
+            index: None,
+            artifacts: None,
+            viewer_state: ViewerState::default(),
+            knowledge_state: KnowledgeState::default(),
+            project_state: ProjectState::default(),
+        });
+    }
     let conn = db::open_db(&library)?;
     let index = db::load_index(&conn)?;
     let artifacts = db::load_artifacts(&conn)?;
@@ -49,6 +98,7 @@ pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
     Ok(LibraryStatus {
         configured: true,
         library_path: Some(library.to_string_lossy().to_string()),
+        library_error: None,
         has_archive: index.is_some(),
         state_migrated,
         index,
@@ -122,26 +172,170 @@ pub fn import_openai_export(
         library_or_error(&app)?
     };
     db::ensure_library_layout(&library)?;
+    let source = PathBuf::from(&source_path);
+    let prepared = prepare_openai_source(&source, &library)?;
     let importer = OpenAiImporter;
-    let build = importer.import(Path::new(&source_path), &library)?;
-    let mut conn = db::open_db(&library)?;
-    db::replace_archive(
-        &mut conn,
-        &build.archive_id,
-        Path::new(&source_path),
-        &build.archive_path,
-        &build.manifest_path,
-        &build.index,
-        &build.artifacts,
-        &build.conversations,
-    )?;
-    Ok(ImportSummary {
-        library_path: library.to_string_lossy().to_string(),
-        archive_id: build.archive_id,
-        manifest_path: build.manifest_path.to_string_lossy().to_string(),
-        index: build.index,
-        artifacts: build.artifacts,
+    let result = (|| {
+        let build = importer.import(&prepared.source_dir, &library)?;
+        let mut conn = db::open_db(&library)?;
+        db::replace_archive(
+            &mut conn,
+            &build.archive_id,
+            &source,
+            &build.archive_path,
+            &build.manifest_path,
+            &build.index,
+            &build.artifacts,
+            &build.conversations,
+        )?;
+        Ok(ImportSummary {
+            library_path: library.to_string_lossy().to_string(),
+            archive_id: build.archive_id,
+            manifest_path: build.manifest_path.to_string_lossy().to_string(),
+            index: build.index,
+            artifacts: build.artifacts,
+        })
+    })();
+    if let Some(temp_dir) = prepared.cleanup_dir {
+        if let Err(err) = fs::remove_dir_all(&temp_dir) {
+            eprintln!(
+                "Could not clean temporary OpenAI export folder {}: {err}",
+                temp_dir.display()
+            );
+        }
+    }
+    result
+}
+
+struct PreparedOpenAiSource {
+    source_dir: PathBuf,
+    cleanup_dir: Option<PathBuf>,
+}
+
+fn prepare_openai_source(source: &Path, library: &Path) -> AppResult<PreparedOpenAiSource> {
+    if source.is_dir() {
+        return Ok(PreparedOpenAiSource {
+            source_dir: source.to_path_buf(),
+            cleanup_dir: None,
+        });
+    }
+    if !source.is_file() {
+        return Err(format!("OpenAI export was not found: {}", source.display()));
+    }
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if extension != "zip" {
+        return Err("Choose an OpenAI export .zip file or an extracted export folder".to_string());
+    }
+
+    let stem = source
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("openai-export");
+    let temp_dir = library.join("imports").join(format!(
+        ".openai-{}-{}",
+        Utc::now().format("%Y%m%d%H%M%S"),
+        slugify_path_name(stem)
+    ));
+    if temp_dir.exists() {
+        fs::remove_dir_all(&temp_dir)
+            .map_err(|err| format!("Could not remove old temporary import folder: {err}"))?;
+    }
+    fs::create_dir_all(&temp_dir)
+        .map_err(|err| format!("Could not create temporary import folder: {err}"))?;
+    extract_zip(source, &temp_dir)?;
+    let source_dir = find_openai_export_root(&temp_dir).ok_or_else(|| {
+        format!(
+            "Could not find conversations.json or conversations-*.json inside {}",
+            source.display()
+        )
+    })?;
+    Ok(PreparedOpenAiSource {
+        source_dir,
+        cleanup_dir: Some(temp_dir),
     })
+}
+
+fn extract_zip(zip_path: &Path, destination: &Path) -> AppResult<()> {
+    let file = fs::File::open(zip_path)
+        .map_err(|err| format!("Could not open OpenAI export zip: {err}"))?;
+    let mut archive =
+        ZipArchive::new(file).map_err(|err| format!("Could not read OpenAI export zip: {err}"))?;
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|err| format!("Could not read zip entry: {err}"))?;
+        let Some(safe_name) = entry.enclosed_name().map(PathBuf::from) else {
+            continue;
+        };
+        let target = destination.join(safe_name);
+        if entry.is_dir() {
+            fs::create_dir_all(&target).map_err(|err| {
+                format!("Could not create zip folder {}: {err}", target.display())
+            })?;
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).map_err(|err| {
+                format!("Could not create zip folder {}: {err}", parent.display())
+            })?;
+        }
+        let mut output = fs::File::create(&target)
+            .map_err(|err| format!("Could not write extracted file {}: {err}", target.display()))?;
+        io::copy(&mut entry, &mut output)
+            .map_err(|err| format!("Could not extract file {}: {err}", target.display()))?;
+    }
+    Ok(())
+}
+
+fn find_openai_export_root(root: &Path) -> Option<PathBuf> {
+    let mut candidates = WalkDir::new(root)
+        .min_depth(0)
+        .max_depth(3)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_dir())
+        .map(|entry| entry.into_path())
+        .filter(|path| has_openai_conversation_files(path))
+        .collect::<Vec<_>>();
+    candidates.sort_by_key(|path| path.components().count());
+    candidates.into_iter().next()
+}
+
+fn has_openai_conversation_files(path: &Path) -> bool {
+    if path.join("conversations.json").is_file() {
+        return true;
+    }
+    fs::read_dir(path)
+        .ok()
+        .into_iter()
+        .flat_map(|entries| entries.filter_map(Result::ok))
+        .any(|entry| {
+            entry.path().is_file()
+                && entry.file_name().to_str().is_some_and(|name| {
+                    name.starts_with("conversations-") && name.ends_with(".json")
+                })
+        })
+}
+
+fn slugify_path_name(value: &str) -> String {
+    let mut out = String::new();
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() {
+            out.push(character.to_ascii_lowercase());
+        } else if matches!(character, '-' | '_' | ' ') && !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    let out = out.trim_matches('-');
+    if out.is_empty() {
+        "openai-export".to_string()
+    } else {
+        out.chars().take(48).collect()
+    }
 }
 
 #[tauri::command]
