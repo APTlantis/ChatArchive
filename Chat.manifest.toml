@@ -3,7 +3,7 @@ schema = "APTlantis Entity Manifest"
 schema_version = "2.4"
 manifest_type = "project"
 canonical_name = "Chat.manifest.toml"
-last_updated = "2026-07-22"
+last_updated = "2026-07-08"
 maintainer = "Herb"
 
 [entity]
