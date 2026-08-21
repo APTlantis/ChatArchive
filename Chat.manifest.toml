@@ -112,6 +112,19 @@ release_note = "docs\\Release-v0.1.1.md"
 release_claim = false
 known_blocker = "Full DRS release verification remains blocked until the destructive installer lifecycle audit is rerun from a known installation baseline."
 
+[release.next]
+version = "0.1.2"
+scope_note = "docs\\Release-v0.1.2-Scope.md"
+distribution = "GitHub Releases"
+primary_windows_installer = "NSIS"
+msix_posture = "Future Microsoft Store path; not the public distribution contract for this release."
+windows_posture = "First public release target; release-ready claims require installer lifecycle evidence from a known Windows baseline."
+macos_posture = "Pending VM verification; do not claim ready."
+linux_posture = "Pending VM verification; do not claim ready."
+deferred_features = [
+    "Project Intelligence",
+]
+
 [release.verified]
 frontend_build = true
 unit_tests = true

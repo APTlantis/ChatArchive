@@ -17,6 +17,10 @@ This document is the internal governance and handoff entry point. Existing `READ
 
 Governance metadata was reconciled on 2026-07-08: version `0.1.0`, lifecycle `blocked`, stage `blocked`. Evidence reviewed: package.json, README.md, tests, and documented installer gate. The build, tests, shipping artifact, and release posture were not executed during this metadata pass, so this classification is not a release-readiness claim.
 
+The next release scope was clarified on 2026-08-21: ChatArchive v0.1.2 is a Windows-first GitHub release candidate using NSIS as the primary public installer. MSIX remains a future Microsoft Store path rather than the public distribution contract for this release. macOS and Linux readiness require platform-specific VM verification before any public claim.
+
+Project Intelligence is deferred from the v0.1.2 release surface. The release should focus on the durable archive, artifact explorer, search, export, and manual knowledge-organization workflows.
+
 ## Visual system
 
 ChatArchive explicitly adopts [Blue Slate](D:/.library/aptlantis_core/blue.slate/Project-README.md) as a visual-system dependency for color tokens, typography, focus treatment, code surfaces, and status accents. This adoption does not replace the current product layout, React/Tauri workflow, archive data model, or DRS release gates.

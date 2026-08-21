@@ -314,9 +314,9 @@ Asset
 
 **Goal:** Discover long-running projects.
 
-**Status:** Implemented. ChatArchive now provides an on-demand local project scan, an evidence-backed review queue, durable confirmed projects with aliases and curation overrides, cross-conversation artifact dashboards, and version-aware activity timelines. Collections seed candidates but remain separate organizational records, and no candidate is promoted without confirmation.
+**Status:** Deferred from the next public release. Prototype code exists for local project scanning, candidate review, confirmed projects, aliases, curation overrides, dashboards, and timelines, but Project Intelligence is not part of the v0.1.2 Windows-first release surface. It should not be advertised as a current public-release capability until its behavior, documentation, persistence model, test coverage, and cross-platform expectations are reconciled.
 
-This is where things become unique.
+This is where things become unique later.
 
 ---
 

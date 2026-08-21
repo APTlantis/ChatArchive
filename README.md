@@ -33,6 +33,8 @@ The currently verified archive contains 733 conversations, 29,861 visible messag
 
 > **Latest patch build:** v0.1.1 was rebuilt on July 22, 2026 with the Blue Slate visual pass, new ChatArchive logo/icon assets, and a packaged Windows GUI subsystem so release builds do not spawn a terminal. See [Release v0.1.1](docs/Release-v0.1.1.md) for hashes and verification evidence. This patch build does not clear the installer lifecycle blocker above.
 
+> **Next release scope:** v0.1.2 is scoped as a Windows-first GitHub release using the NSIS installer as the primary public installer. MSIX remains a future Microsoft Store path, not the public distribution contract for this release. macOS and Linux support stay pending VM verification, and Project Intelligence is deferred from the release surface. See [Release v0.1.2 Scope](docs/Release-v0.1.2-Scope.md).
+
 ## Why This Exists
 
 Most chat exports are useful but awkward. They preserve data, not continuity. This project tries to make exported conversations browsable, inspectable, and reusable:
@@ -233,6 +235,7 @@ This normalized layer is what makes future provider support realistic. Gemini, C
 - Mermaid diagram rendering is limited to fenced `mermaid`, `mmd`, and `zenuml` code blocks.
 - There is no built-in privacy scrubber yet. Treat generated archive files as sensitive.
 - Provider-neutral import begins with the Rust `ProviderImporter` boundary, but only the OpenAI implementation exists right now.
+- Project Intelligence is deferred from the next public release surface.
 
 ## Privacy Notes
 
@@ -355,13 +358,13 @@ The React UI supports two data paths. In the desktop app it uses Tauri commands 
 
 ## Suggested Next Milestones
 
-1. Re-establish a known Windows installation baseline and clear the complete Phase 2 release gate.
-2. Complete the static/in-app-browser compatibility smoke and record it in the QA report.
-3. Add Phase 2D Link Explorer on top of the existing link artifact index.
-4. Add a privacy scrubber before broader sharing.
-5. Add the next provider adapter behind the existing `ProviderImporter` boundary.
-6. Add provider-neutral import documentation and a local-model handoff exporter.
+1. Remove or hide Project Intelligence from the v0.1.2 user-facing release surface.
+2. Re-establish a known Windows installation baseline and clear the complete Phase 2 release gate.
+3. Publish the Windows release through GitHub with NSIS as the primary installer and matching hash evidence.
+4. Complete VM verification before claiming macOS or Linux readiness.
+5. Add a privacy scrubber before broader sharing.
+6. Add the next provider adapter behind the existing `ProviderImporter` boundary.
 
 ## Status
 
-Phase 1 and Phase 2A-2C are implemented. ChatArchive is useful today as a durable local OpenAI archive with SQLite-backed viewer state, sharded-export ingestion, `.dat` attachment recovery, rich conversation search, code and diagram rendering, and dedicated Code, Document, and Asset explorers. The extensive Phase 2 regression harness is now part of the repository, but its current verdict keeps Stage 3 blocked until installer-state restoration is proven from a known baseline. Phase 2D Link Explorer, provider adapters, curation, privacy/redaction, and deeper retrieval remain future work.
+Phase 1, Phase 2A-2C, and Knowledge Organization are implemented. ChatArchive is useful today as a durable local OpenAI archive with SQLite-backed viewer state, sharded-export ingestion, `.dat` attachment recovery, rich conversation search, code and diagram rendering, dedicated Code, Document, and Asset explorers, and manual tags, collections, notes, and favorites. The extensive Phase 2 regression harness is now part of the repository, but its current verdict keeps Stage 3 blocked until installer-state restoration is proven from a known baseline. Project Intelligence is deferred from the next public release. Phase 2D Link Explorer polish, provider adapters, privacy/redaction, and deeper retrieval remain future work.
