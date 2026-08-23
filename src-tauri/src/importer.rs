@@ -1364,7 +1364,7 @@ fn summarize_conversation(
         slug: format!(
             "{}-{}",
             slugify(&title, &id),
-            &id.chars().take(8).collect::<String>()
+            id.chars().take(8).collect::<String>()
         ),
         create_time,
         update_time,

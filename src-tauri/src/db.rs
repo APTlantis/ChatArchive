@@ -1023,44 +1023,43 @@ pub fn replace_knowledge_state(
 }
 
 pub fn load_project_state(conn: &Connection) -> AppResult<ProjectState> {
-    let mut state = ProjectState::default();
-    state.scan_runs = query_rows(conn, "SELECT id, scanned_at, candidate_count FROM project_scan_runs ORDER BY scanned_at DESC LIMIT 20", |row| Ok(ProjectScanRun { id: row.get(0)?, scanned_at: row.get(1)?, candidate_count: row.get::<_, i64>(2)? as usize }))?;
-    state.candidates = query_rows(
-        conn,
-        "SELECT candidate_json FROM project_candidates ORDER BY normalized_name",
-        |row| {
-            let raw: String = row.get(0)?;
-            serde_json::from_str(&raw).map_err(|err| {
-                rusqlite::Error::FromSqlConversionFailure(
-                    0,
-                    rusqlite::types::Type::Text,
-                    Box::new(err),
-                )
-            })
-        },
-    )?;
-    state.projects = query_rows(conn, "SELECT id, name, normalized_name, created_at, updated_at FROM projects ORDER BY name COLLATE NOCASE", |row| Ok(Project { id: row.get(0)?, name: row.get(1)?, normalized_name: row.get(2)?, created_at: row.get(3)?, updated_at: row.get(4)? }))?;
-    state.aliases = query_rows(conn, "SELECT project_id, alias, normalized_alias FROM project_aliases ORDER BY alias COLLATE NOCASE", |row| Ok(ProjectAlias { project_id: row.get(0)?, alias: row.get(1)?, normalized_alias: row.get(2)? }))?;
-    state.memberships = query_rows(conn, "SELECT project_id, target_type, target_id, conversation_id, title, source, created_at FROM project_memberships ORDER BY created_at", |row| Ok(ProjectMembership { project_id: row.get(0)?, target: KnowledgeTarget { target_type: row.get(1)?, target_id: row.get(2)?, conversation_id: row.get(3)?, title: row.get(4)? }, source: row.get(5)?, created_at: row.get(6)? }))?;
-    state.exclusions = query_rows(
-        conn,
-        "SELECT project_id, target_type, target_id FROM project_exclusions",
-        |row| {
-            Ok(ProjectExclusion {
-                project_id: row.get(0)?,
-                target_type: row.get(1)?,
-                target_id: row.get(2)?,
-            })
-        },
-    )?;
-    state.dismissed_candidates = query_rows(
-        conn,
-        "SELECT normalized_name FROM dismissed_project_candidates",
-        |row| row.get(0),
-    )?;
-    Ok(state)
+    Ok(ProjectState {
+        scan_runs: query_rows(conn, "SELECT id, scanned_at, candidate_count FROM project_scan_runs ORDER BY scanned_at DESC LIMIT 20", |row| Ok(ProjectScanRun { id: row.get(0)?, scanned_at: row.get(1)?, candidate_count: row.get::<_, i64>(2)? as usize }))?,
+        candidates: query_rows(
+            conn,
+            "SELECT candidate_json FROM project_candidates ORDER BY normalized_name",
+            |row| {
+                let raw: String = row.get(0)?;
+                serde_json::from_str(&raw).map_err(|err| {
+                    rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(err),
+                    )
+                })
+            },
+        )?,
+        projects: query_rows(conn, "SELECT id, name, normalized_name, created_at, updated_at FROM projects ORDER BY name COLLATE NOCASE", |row| Ok(Project { id: row.get(0)?, name: row.get(1)?, normalized_name: row.get(2)?, created_at: row.get(3)?, updated_at: row.get(4)? }))?,
+        aliases: query_rows(conn, "SELECT project_id, alias, normalized_alias FROM project_aliases ORDER BY alias COLLATE NOCASE", |row| Ok(ProjectAlias { project_id: row.get(0)?, alias: row.get(1)?, normalized_alias: row.get(2)? }))?,
+        memberships: query_rows(conn, "SELECT project_id, target_type, target_id, conversation_id, title, source, created_at FROM project_memberships ORDER BY created_at", |row| Ok(ProjectMembership { project_id: row.get(0)?, target: KnowledgeTarget { target_type: row.get(1)?, target_id: row.get(2)?, conversation_id: row.get(3)?, title: row.get(4)? }, source: row.get(5)?, created_at: row.get(6)? }))?,
+        exclusions: query_rows(
+            conn,
+            "SELECT project_id, target_type, target_id FROM project_exclusions",
+            |row| {
+                Ok(ProjectExclusion {
+                    project_id: row.get(0)?,
+                    target_type: row.get(1)?,
+                    target_id: row.get(2)?,
+                })
+            },
+        )?,
+        dismissed_candidates: query_rows(
+            conn,
+            "SELECT normalized_name FROM dismissed_project_candidates",
+            |row| row.get(0),
+        )?,
+    })
 }
-
 fn query_rows<T, F>(conn: &Connection, sql: &str, mut map: F) -> AppResult<Vec<T>>
 where
     F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<T>,

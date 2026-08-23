@@ -1,7 +1,7 @@
 {
   "name": "openai-history-archive-viewer",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "scripts": {
     "ingest": "node scripts/ingest-openai-history.js",
@@ -16,7 +16,8 @@
     "qa:phase2": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qa/phase2-release-gate.ps1",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "release:msix": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/build-store-msix.ps1"
   },
   "dependencies": {
     "@mermaid-js/mermaid-zenuml": "^0.2.3",

@@ -18,7 +18,7 @@ This document is the internal governance and handoff entry point. Existing `READ
 
 Governance metadata was reconciled on 2026-07-08: version `0.1.0`, lifecycle `blocked`, stage `blocked`. Evidence reviewed: package.json, README.md, tests, and documented installer gate. The build, tests, shipping artifact, and release posture were not executed during this metadata pass, so this classification is not a release-readiness claim.
 
-The next release scope was clarified on 2026-08-21: ChatArchive v0.1.2 is a Windows-first GitHub release candidate using NSIS as the primary public installer. MSIX remains a future Microsoft Store path rather than the public distribution contract for this release. macOS and Linux readiness require platform-specific VM verification before any public claim.
+The next release scope was revised on 2026-08-23: ChatArchive v0.1.2 is a Windows-first Microsoft Store release candidate using MSIX as the primary public Windows artifact. Partner Center package identity is authoritative for Store submission, and local self-signed MSIX packages are sideload evidence only. macOS and Linux readiness require platform-specific VM verification before any public claim.
 
 Project Intelligence is deferred from the v0.1.2 release surface. The release should focus on the durable archive, artifact explorer, search, export, and manual knowledge-organization workflows.
 
@@ -26,7 +26,7 @@ Project Intelligence is deferred from the v0.1.2 release surface. The release sh
 
 ChatArchive explicitly adopts [Blue Slate](D:/.library/aptlantis_core/blue.slate/Project-README.md) as a visual-system dependency for color tokens, typography, focus treatment, code surfaces, and status accents. This adoption does not replace the current product layout, React/Tauri workflow, archive data model, or DRS release gates.
 
-This is a theme alignment only. The project remains `blocked` and not release-verified until the normal DRS build, packaging, installer, launch, hash, and documentation gates are completed.
+This is a theme alignment only. The project remains `blocked` and not release-verified until the normal DRS build, Store MSIX packaging, WACK, MSIX lifecycle, final hash, Partner Center publication, and documentation gates are completed.
 
 ## Structure and relationships
 
@@ -43,6 +43,6 @@ Record verified commands, artifacts, versions, and current test results here as 
 ## Known gaps and next review
 
 - Confirm the project lifecycle and active-development state.
-- Confirm build, run, test, packaging, and release commands from current source.
+- Confirm build, run, test, Store MSIX packaging, and release commands from current source.
 - Reconcile useful fields from legacy manifests without deleting historical evidence.
 - Replace inferred descriptions with project-owner language where needed.

@@ -11,6 +11,16 @@
 /.qa/
 /playwright-report/
 /coverage/
+/scripts/release/store-identity.json
+/src-tauri/target/store-msix/
+/*.msix
+/*.msixbundle
+/*.msixupload
+/*.appx
+/*.appxbundle
+/*.appxupload
 
 # Development certificate
-devcert.pfx
+*.pfx
+*.cer
+*.pvk

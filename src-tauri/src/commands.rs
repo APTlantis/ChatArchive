@@ -268,7 +268,7 @@ fn extract_zip(zip_path: &Path, destination: &Path) -> AppResult<()> {
         let mut entry = archive
             .by_index(index)
             .map_err(|err| format!("Could not read zip entry: {err}"))?;
-        let Some(safe_name) = entry.enclosed_name().map(PathBuf::from) else {
+        let Some(safe_name) = entry.enclosed_name() else {
             continue;
         };
         let target = destination.join(safe_name);
@@ -470,7 +470,10 @@ pub fn export_code_snippet(target_path: String, code: String) -> Result<String, 
     }
     if let Some(parent) = path.parent() {
         if !parent.exists() {
-            return Err(format!("Export folder does not exist: {}", parent.display()));
+            return Err(format!(
+                "Export folder does not exist: {}",
+                parent.display()
+            ));
         }
     }
     fs::write(&path, code).map_err(|err| format!("Could not export code snippet: {err}"))?;

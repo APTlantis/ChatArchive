@@ -113,15 +113,19 @@ date = "2026-07-22"
 summary = "Patch build for Blue Slate visual adoption, new ChatArchive logo/icon assets, and packaged Windows GUI subsystem so release builds do not spawn a console window."
 release_note = "docs\\Release-v0.1.1.md"
 release_claim = false
-known_blocker = "Full DRS release verification remains blocked until the destructive installer lifecycle audit is rerun from a known installation baseline."
+known_blocker = "Full DRS release verification remains blocked until Store MSIX packaging, WACK, MSIX lifecycle, final hash, Partner Center certification, and publication evidence are complete."
 
 [release.next]
 version = "0.1.2"
 scope_note = "docs\\Release-v0.1.2-Scope.md"
-distribution = "GitHub Releases"
-primary_windows_installer = "NSIS"
-msix_posture = "Future Microsoft Store path; not the public distribution contract for this release."
-windows_posture = "First public release target; release-ready claims require installer lifecycle evidence from a known Windows baseline."
+distribution = "Microsoft Store"
+primary_windows_artifact = "MSIX"
+store_identity_config = "scripts\\release\\store-identity.json"
+store_identity_template = "scripts\\release\\store-identity.template.json"
+store_packaging_script = "scripts\\release\\build-store-msix.ps1"
+msix_posture = "Primary public Windows release artifact; local self-signed packages are sideload evidence only."
+nsis_posture = "Developer fallback or historical evidence only; not the public v0.1.2 release contract."
+windows_posture = "First public release target; release-ready claims require clean MSIX packaging, WACK, MSIX lifecycle, final hash, Partner Center certification, and publication evidence."
 macos_posture = "Pending VM verification; do not claim ready."
 linux_posture = "Pending VM verification; do not claim ready."
 deferred_features = [
@@ -136,6 +140,11 @@ ui_tests = true
 tauri_build = true
 windows_gui_subsystem = true
 installer_lifecycle = false
+store_msix_build = false
+wack = false
+msix_lifecycle = false
+partner_center_submission = false
+microsoft_signed_package = false
 
 [[release.artifacts]]
 name = "ChatArchive_0.1.1_x64_en-US.msi"

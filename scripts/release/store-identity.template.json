@@ -1,0 +1,32 @@
+{
+  "storeIdentityReserved": false,
+  "package": {
+    "name": "REPLACE_WITH_PARTNER_CENTER_PACKAGE_IDENTITY_NAME",
+    "publisher": "CN=REPLACE_WITH_PARTNER_CENTER_PUBLISHER",
+    "version": "1.0.2.0",
+    "processorArchitecture": "x64"
+  },
+  "app": {
+    "id": "chatArchive",
+    "executable": "chatarchive.exe",
+    "displayName": "ChatArchive",
+    "description": "A local-first desktop archive for exported ChatGPT conversations."
+  },
+  "publisherDisplayName": "Aptlantis",
+  "visualAssets": {
+    "sourceDirectory": "Assets",
+    "logo": "Assets\\StoreLogo.png",
+    "square44x44Logo": "Assets\\AppList.png",
+    "square150x150Logo": "Assets\\MedTile.png",
+    "wide310x150Logo": "Assets\\WideTile.png"
+  },
+  "targetDeviceFamily": {
+    "name": "Windows.Desktop",
+    "minVersion": "10.0.18362.0",
+    "maxVersionTested": "10.0.26200.0"
+  },
+  "storeSubmission": {
+    "runFullTrustJustification": "ChatArchive is a Tauri desktop application that runs as a full-trust Windows desktop app while storing user-selected local archive libraries.",
+    "publicationStatus": "blocked until Partner Center identity, Store package upload, Microsoft certification, and Microsoft re-signing are complete"
+  }
+}

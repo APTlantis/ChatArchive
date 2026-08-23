@@ -2,13 +2,13 @@
 
 **Date:** June 30, 2026  
 **Platform:** Windows, native Tauri/WebView2 authoritative  
-**Result:** **FAIL - Stage 3 remains blocked**
+**Result:** **FAIL - Stage 3 remains blocked; v0.1.2 Store MSIX gate pending**
 
 ## Executive result
 
-The Phase 2 regression harness is implemented and the unit, Rust, rendered UI, production build, privacy, isolated real-export import, reconciliation, document-fidelity, and native persistence gates pass. The installer audit uncovered a release-blocking defect in the test/restoration workflow: the pre-test installation used `C:\Program Files\ChatArchive`, while the current bundles install per-user under `%LOCALAPPDATA%\ChatArchive`. The first lifecycle runner did not preserve the registered installer's cached MSI before replacement, so it could restore the original executable files but could not recreate the original Windows Installer registration exactly.
+The Phase 2 regression harness is implemented and the unit, Rust, rendered UI, production build, privacy, isolated real-export import, reconciliation, document-fidelity, and native persistence gates pass. This report is historical evidence for the MSI/NSIS-era gate. The v0.1.2 Windows release target has moved to Microsoft Store MSIX, so release readiness now requires a clean MSIX package, WACK evidence, MSIX install/launch/uninstall/data-preservation evidence, final MSIX hash, and Partner Center certification/publication evidence.
 
-The original executable files remain backed up in the workspace-local `.qa\installed-backup`. Windows Installer now has only the newly built product registered and cached. Under the release criteria, inability to prove exact pre-test installation restoration blocks Stage 3.
+The old installer restoration failure remains useful cautionary evidence: lifecycle audits must start from a known baseline and preserve user data. It is no longer the public artifact contract for v0.1.2 because NSIS/MSI are not the primary Windows release path.
 
 ## Environment and isolation
 
@@ -29,11 +29,15 @@ The original executable files remain backed up in the workspace-local `.qa\insta
 | Clippy | Pass | All targets with warnings denied |
 | Playwright UI | Pass | 9/9 at 1920x1080, 1366x768, and 390x844 |
 | Accessibility | Pass | No serious or critical axe violations in tested flow; keyboard focus verified |
-| Production Tauri build | Pass | MSI and NSIS produced |
+| Production Tauri build | Pass | Historical MSI and NSIS produced |
 | Privacy payload inspection | Pass | No archive-data, archive-assets, or archive-documents payload in `dist` |
 | Native isolated import | Pass | Exact live baselines, zero orphan source IDs, state survived forced relaunch |
 | Recovered document fidelity | Pass | Source `.dat` and archived document bytes/hash match |
-| Installer lifecycle | **Fail** | Exact pre-test Windows Installer registration could not be restored after package-scope mismatch |
+| Historical installer lifecycle | **Fail** | Exact pre-test Windows Installer registration could not be restored after package-scope mismatch |
+| Store MSIX package | Pending | Clean package must launch `chatarchive.exe` directly and exclude installer payloads/private signing material |
+| WACK Store MSIX validation | Pending | Required before Partner Center submission |
+| MSIX lifecycle | Pending | Install, launch, uninstall, and user-data preservation from a known baseline |
+| Partner Center publication | Pending | Store certification, Microsoft re-signing, and publication evidence required |
 | In-app browser compatibility smoke | Not executed | Browser backend rejected the tab/session binding; Playwright static-browser matrix remains green |
 
 ## Live invariant reconciliation
@@ -78,8 +82,9 @@ These are informational, not release thresholds.
 | Full isolated import | 54,785 ms |
 | Working set after relaunch | 70,295,552 bytes |
 | SQLite database | 596,013,056 bytes |
-| MSI | 6,594,560 bytes |
-| NSIS | 5,132,443 bytes |
+| MSI | 6,594,560 bytes (historical fallback evidence) |
+| NSIS | 5,132,443 bytes (historical fallback evidence) |
+| Store MSIX | Pending final v0.1.2 package |
 
 ## Bundle hashes
 
@@ -93,11 +98,12 @@ These are informational, not release thresholds.
 - `npm test`: Vitest unit tests
 - `npm run test:ui`: Playwright desktop/mobile and accessibility suite
 - `npm run test:native`: isolated real-export import, reconciliation, fidelity, and persistence audit
-- `npm run test:installer`: MSI/NSIS lifecycle audit
+- `npm run release:msix`: Store MSIX build from untracked Partner Center identity config
+- `npm run test:installer`: historical MSI/NSIS lifecycle audit retained for fallback evidence
 - `npm run qa:phase2`: complete release gate
 
-The installer runner was hardened after the failure to discover install destinations from registry data and preserve a registered installer's cached MSI before future replacement testing. A future release run must begin from a deliberately established known installation, prove that its registration and files are restored byte-for-byte, and then complete MSI and NSIS clean-install/replacement/uninstall assertions.
+The installer runner was hardened after the failure to discover install destinations from registry data and preserve a registered installer's cached MSI before future replacement testing. For v0.1.2, the release lifecycle runner should target MSIX install, launch, uninstall, and user-data preservation instead of making MSI/NSIS the public release gate.
 
 ## Stage 3 recommendation
 
-**Do not begin Stage 3.** Re-establish the intended production installation state, rerun the hardened installer lifecycle from that known baseline, complete the in-app browser compatibility smoke, and require a fully green `npm run qa:phase2`. No functional archive, explorer, fidelity, or data-reconciliation defect was found in the gates that completed.
+**Do not begin Stage 3.** Fill the Partner Center identity config, build a clean Store MSIX, run WACK, complete the MSIX lifecycle audit from a known baseline, record the final MSIX hash, and require Partner Center certification/publication evidence before release-ready claims. No functional archive, explorer, fidelity, or data-reconciliation defect was found in the gates that completed.

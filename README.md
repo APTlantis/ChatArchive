@@ -29,11 +29,11 @@ This project started as a static personal archive reader, but the direction is b
 
 The currently verified archive contains 733 conversations, 29,861 visible messages, 36,835 code artifacts, 5,823 image assets, 1,624 attached documents, and 8,838 link artifacts. Of the image assets, 5,320 resolve locally, 490 are external, and 13 remain unresolved. Of the documents, 724 payloads are recoverable from the export and 900 remain metadata-only pointers because their source blobs are absent. These are live-library figures from the June 30, 2026 import and will change when another export is ingested.
 
-> **Release status:** Phase 1 and Phase 2A-2C are implemented, but Stage 3 is intentionally blocked by the Phase 2 release gate. The functional, data-integrity, accessibility, native-import, and packaging checks pass; the Windows installer lifecycle must be rerun from a known installation baseline before the gate can be cleared. See the [Phase 2 QA report](docs/Phase2-QA-Report.md) for results, hashes, performance baselines, and the exact blocker.
+> **Release status:** Phase 1 and Phase 2A-2C are implemented, but Stage 3 is intentionally blocked by the release gate. The functional, data-integrity, accessibility, native-import, and earlier installer checks pass; v0.1.2 now requires a clean Store MSIX build, WACK pass, MSIX lifecycle audit, final package hash, and Partner Center publication evidence before release-ready claims. See the [Phase 2 QA report](docs/Phase2-QA-Report.md) for historical results and the current packaging gate.
 
-> **Latest patch build:** v0.1.1 was rebuilt on July 22, 2026 with the Blue Slate visual pass, new ChatArchive logo/icon assets, and a packaged Windows GUI subsystem so release builds do not spawn a terminal. See [Release v0.1.1](docs/Release-v0.1.1.md) for hashes and verification evidence. This patch build does not clear the installer lifecycle blocker above.
+> **Latest patch build:** v0.1.1 was rebuilt on July 22, 2026 with the Blue Slate visual pass, new ChatArchive logo/icon assets, and a packaged Windows GUI subsystem so release builds do not spawn a terminal. See [Release v0.1.1](docs/Release-v0.1.1.md) for hashes and verification evidence. This patch build does not clear the current Store MSIX release gate above.
 
-> **Next release scope:** v0.1.2 is scoped as a Windows-first GitHub release using the NSIS installer as the primary public installer. MSIX remains a future Microsoft Store path, not the public distribution contract for this release. macOS and Linux support stay pending VM verification, and Project Intelligence is deferred from the release surface. See [Release v0.1.2 Scope](docs/Release-v0.1.2-Scope.md).
+> **Next release scope:** v0.1.2 is scoped as a Windows-first Microsoft Store release using MSIX as the primary public Windows artifact. NSIS/MSI are no longer the v0.1.2 public release contract. macOS and Linux support stay pending VM verification, and Project Intelligence is deferred from the release surface. See [Release v0.1.2 Scope](docs/Release-v0.1.2-Scope.md).
 
 ## Why This Exists
 
@@ -82,7 +82,7 @@ npm run tauri:build
 
 ## Testing And Release Gate
 
-The repository includes permanent regression coverage for the React explorer logic, rendered desktop/mobile behavior, Rust import transactions, real-export reconciliation, native persistence, production privacy, and Windows installers.
+The repository includes permanent regression coverage for the React explorer logic, rendered desktop/mobile behavior, Rust import transactions, real-export reconciliation, native persistence, production privacy, and Windows packaging.
 
 ```powershell
 # Fast unit suite
@@ -97,10 +97,13 @@ npm run test:rust
 # Destructive real-export audit against .qa\library under the repo root
 npm run test:native
 
-# MSI and NSIS lifecycle audit
+# Store MSIX package build; requires untracked Partner Center identity config
+npm run release:msix
+
+# Historical MSI/NSIS lifecycle audit, retained for developer fallback evidence only
 npm run test:installer
 
-# Complete Phase 2 release gate
+# Complete release gate
 npm run qa:phase2
 ```
 
@@ -113,12 +116,12 @@ The June 30, 2026 audit currently records:
 - 6 active Rust tests passed; the opt-in real-export smoke is covered by the isolated native audit.
 - SQLite and artifact indexes reconciled exactly with zero orphaned source IDs.
 - A representative recovered document matched its source `.dat` blob byte-for-byte.
-- Production frontend, Tauri, MSI, NSIS, Clippy, formatting, and private-payload checks passed.
-- The installer-state restoration check failed, so `qa:phase2` is not yet a green release gate.
+- Production frontend, Tauri MSI/NSIS packaging, Clippy, formatting, and private-payload checks passed in the historical Phase 2 run.
+- The old installer-state restoration check failed, and the current v0.1.2 gate now requires clean Store MSIX packaging and lifecycle evidence instead of treating NSIS/MSI as public release artifacts.
 
-Do not run the installer lifecycle casually on a workstation with an installation you cannot reconstruct. The hardened runner snapshots registered package information and installer payloads, but a known baseline is still required for a meaningful restoration assertion.
+Do not run lifecycle checks casually on a workstation with an installation you cannot reconstruct. The v0.1.2 release lifecycle target is MSIX install, launch, uninstall, and user-data preservation from a known baseline; the MSI/NSIS runner remains historical fallback evidence only.
 
-The July 22, 2026 v0.1.1 patch build additionally verified `npm run build`, `npm test`, `npm run test:rust`, `npm run test:ui`, and `npm run tauri:build`. The rebuilt `chatarchive.exe` reports the `Windows GUI` subsystem, and the generated MSI/NSIS installers are hashed in the release note.
+The July 22, 2026 v0.1.1 patch build additionally verified `npm run build`, `npm test`, `npm run test:rust`, `npm run test:ui`, and `npm run tauri:build`. The rebuilt `chatarchive.exe` reports the `Windows GUI` subsystem. For v0.1.2, final public hash evidence must be recorded against the clean Store MSIX package generated by `npm run release:msix`.
 
 The app will ask for a library folder. A normal library layout looks like:
 
@@ -359,12 +362,12 @@ The React UI supports two data paths. In the desktop app it uses Tauri commands 
 ## Suggested Next Milestones
 
 1. Remove or hide Project Intelligence from the v0.1.2 user-facing release surface.
-2. Re-establish a known Windows installation baseline and clear the complete Phase 2 release gate.
-3. Publish the Windows release through GitHub with NSIS as the primary installer and matching hash evidence.
+2. Fill the untracked Store identity config from Partner Center and build a clean Store MSIX package.
+3. Run WACK plus MSIX install, launch, uninstall, data-preservation, hash, and Partner Center publication evidence.
 4. Complete VM verification before claiming macOS or Linux readiness.
 5. Add a privacy scrubber before broader sharing.
 6. Add the next provider adapter behind the existing `ProviderImporter` boundary.
 
 ## Status
 
-Phase 1, Phase 2A-2C, and Knowledge Organization are implemented. ChatArchive is useful today as a durable local OpenAI archive with SQLite-backed viewer state, sharded-export ingestion, `.dat` attachment recovery, rich conversation search, code and diagram rendering, dedicated Code, Document, and Asset explorers, and manual tags, collections, notes, and favorites. The extensive Phase 2 regression harness is now part of the repository, but its current verdict keeps Stage 3 blocked until installer-state restoration is proven from a known baseline. Project Intelligence is deferred from the next public release. Phase 2D Link Explorer polish, provider adapters, privacy/redaction, and deeper retrieval remain future work.
+Phase 1, Phase 2A-2C, and Knowledge Organization are implemented. ChatArchive is useful today as a durable local OpenAI archive with SQLite-backed viewer state, sharded-export ingestion, `.dat` attachment recovery, rich conversation search, code and diagram rendering, dedicated Code, Document, and Asset explorers, and manual tags, collections, notes, and favorites. The extensive Phase 2 regression harness is now part of the repository, but its current verdict keeps Stage 3 blocked until clean Store MSIX packaging, WACK, lifecycle, and Partner Center publication evidence are complete. Project Intelligence is deferred from the next public release. Phase 2D Link Explorer polish, provider adapters, privacy/redaction, and deeper retrieval remain future work.
