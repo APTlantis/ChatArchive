@@ -741,6 +741,14 @@ a:hover {
   padding: 8px;
 }
 
+.explorer-facets h3 {
+  margin: 8px 0 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
 .facet-row {
   display: flex;
   width: 100%;

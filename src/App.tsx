@@ -68,6 +68,7 @@ import {
   loadConversation,
   markRead,
   resolveArchiveAssetUrl,
+  exportCodeSnippet as exportCodeSnippetDesktop,
   exportDocumentMarkdown as exportDocumentMarkdownDesktop,
   saveMessageBookmark,
   saveScrollPosition,
@@ -79,6 +80,9 @@ import {
   type LibraryStatus,
 } from './archiveApi';
 import {
+  assetDisplayName,
+  assetFileExtension,
+  countAssetExtensions,
   countAssetKinds,
   countCodeLanguages,
   countDocumentTypes,
@@ -529,19 +533,43 @@ function codeArtifactLanguage(item: CodeArtifact) {
   return normalizeCodeLanguage(item);
 }
 
+const CODE_EXTENSIONS: Record<string, string> = {
+  bash: 'sh',
+  batch: 'bat',
+  csharp: 'cs',
+  docker: 'dockerfile',
+  javascript: 'js',
+  json: 'json',
+  markdown: 'md',
+  powershell: 'ps1',
+  python: 'py',
+  rust: 'rs',
+  shell: 'sh',
+  typescript: 'ts',
+  yaml: 'yml',
+};
+
 function formatApproxSize(text: string) {
   const bytes = new TextEncoder().encode(text).length;
   if (bytes < 1024) return `${bytes.toLocaleString()} B`;
   return `${(bytes / 1024).toFixed(bytes > 10240 ? 0 : 1)} KB`;
 }
 
-function exportCodeSnippet(item: CodeArtifact) {
+function slugFilePart(value: string, fallback: string) {
+  return value.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 72) || fallback;
+}
+
+async function exportCodeSnippet(item: CodeArtifact) {
   const language = codeArtifactLanguage(item);
+  const extension = CODE_EXTENSIONS[language] || (language === 'text' || language === 'unknown' ? 'txt' : language.replace(/[^a-z0-9]+/gi, '').slice(0, 8) || 'txt');
+  const filename = `${slugFilePart(item.conversationTitle, 'snippet')}-${item.id}.${extension}`;
+  const desktopPath = await exportCodeSnippetDesktop(item.text, filename);
+  if (desktopPath) return;
   const blob = new Blob([item.text], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${item.conversationTitle.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').slice(0, 72) || 'snippet'}-${item.id}.${language}.txt`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -1306,7 +1334,7 @@ function CodeExplorer({
                     Organize
                   </button>
                   <CopyButton value={selected.text} label="Copy snippet" />
-                  <button className="toolbar-button" type="button" onClick={() => exportCodeSnippet(selected)}>
+                  <button className="toolbar-button" type="button" onClick={() => void exportCodeSnippet(selected)}>
                     <Download size={16} />
                     Export
                   </button>
@@ -1485,13 +1513,17 @@ function AssetExplorer({
 }) {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState('all');
+  const [extension, setExtension] = useState('all');
   const [selectedId, setSelectedId] = useState('');
   const counts = useMemo(() => {
     return countAssetKinds(artifacts);
   }, [artifacts]);
+  const extensions = useMemo(() => {
+    return countAssetExtensions(artifacts);
+  }, [artifacts]);
   const filtered = useMemo(() => {
-    return filterAssetArtifacts(artifacts, kind, query);
-  }, [artifacts, kind, query]);
+    return filterAssetArtifacts(artifacts, kind, extension, query);
+  }, [artifacts, extension, kind, query]);
   const selected = selectedExplorerArtifact(filtered, selectedId);
   const visibleRows = visibleExplorerRows(filtered);
 
@@ -1510,33 +1542,39 @@ function AssetExplorer({
         <div><p>Artifact explorer</p><h2>Asset Explorer</h2></div>
       </div>
       <div className="explorer-toolbar">
-        <label className="explorer-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search label, pointer, URL, or conversation" /></label>
+        <label className="explorer-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, pointer, extension, dimensions, URL, or conversation" /></label>
         <span>{filtered.length.toLocaleString()} of {artifacts.length.toLocaleString()} assets</span>
       </div>
       <div className="explorer-grid">
         <aside className="explorer-facets">
+          <h3>Asset state</h3>
           {([['all', 'All assets', artifacts.length], ['local', 'Local', counts.local], ['external', 'External', counts.external], ['missing', 'Missing', counts.missing]] as const).map(([value, label, count]) => (
             <button className={kind === value ? 'facet-row active' : 'facet-row'} type="button" key={value} onClick={() => setKind(value)}><span>{label}</span><strong>{count.toLocaleString()}</strong></button>
+          ))}
+          <h3>File type</h3>
+          <button className={extension === 'all' ? 'facet-row active' : 'facet-row'} type="button" onClick={() => setExtension('all')}><span>All types</span><strong>{artifacts.length.toLocaleString()}</strong></button>
+          {extensions.slice(0, 18).map((item) => (
+            <button className={extension === item.name ? 'facet-row active' : 'facet-row'} type="button" key={item.name} onClick={() => setExtension(item.name)}><span>{item.name}</span><strong>{item.count.toLocaleString()}</strong></button>
           ))}
         </aside>
         <div className="artifact-list asset-artifact-list">
           {visibleRows.map((item) => (
             <button className={selected?.id === item.id ? `asset-artifact-row selected ${item.kind}` : `asset-artifact-row ${item.kind}`} type="button" key={item.id} onClick={() => setSelectedId(item.id)}>
               {item.kind === 'missing' ? <div className="asset-image-fallback"><FileImage size={22} /><span>Missing</span></div> : <ArtifactImage asset={item} />}
-              <strong>{item.kind === 'external' ? 'External image' : item.label}</strong>
-              <small>{item.conversationTitle}</small>
+              <strong>{assetDisplayName(item)}</strong>
+              <small>{assetFileExtension(item)} - {item.conversationTitle}</small>
             </button>
           ))}
-          {filtered.length > visibleRows.length ? <p className="list-limit-note">Showing first {visibleRows.length.toLocaleString()} matches. Narrow the search or choose an asset type.</p> : null}
+          {filtered.length > visibleRows.length ? <p className="list-limit-note">Showing first {visibleRows.length.toLocaleString()} matches. Narrow the search, asset state, or file type.</p> : null}
           {!filtered.length ? <p className="empty-note">No assets match those filters.</p> : null}
         </div>
         <section className="artifact-detail">
           {selected ? (
             <>
               <div className="artifact-detail-head">
-                <div><span>{selected.kind}</span><h3>{selected.label}</h3><p>{selected.conversationTitle} - {roleLabel(selected.role)} - {formatDate(selected.createTime)}</p></div>
+                <div><span>{selected.kind} - {assetFileExtension(selected)}</span><h3>{assetDisplayName(selected)}</h3><p>{selected.conversationTitle} - {roleLabel(selected.role)} - {formatDate(selected.createTime)}</p></div>
                 <div className="artifact-actions">
-                  <button className="toolbar-button" type="button" onClick={() => onOrganize({ targetType: 'asset', targetId: selected.id, conversationId: selected.conversationId, title: selected.label })}><Tags size={16} />Organize</button>
+                  <button className="toolbar-button" type="button" onClick={() => onOrganize({ targetType: 'asset', targetId: selected.id, conversationId: selected.conversationId, title: assetDisplayName(selected) })}><Tags size={16} />Organize</button>
                   <CopyButton value={selected.original} label="Copy pointer" />
                   {selected.kind !== 'missing' ? <button className="toolbar-button" type="button" onClick={() => onOpenAsset(selected)}><Eye size={16} />Full size</button> : null}
                   <button className="toolbar-button active" type="button" onClick={() => onOpenSource(selected)}><ArrowLeft size={16} />Source</button>
@@ -1547,7 +1585,7 @@ function AssetExplorer({
               ) : (
                 <button className="asset-detail-preview" type="button" onClick={() => onOpenAsset(selected)}><ArtifactImage asset={selected} /></button>
               )}
-              <dl className="asset-metadata"><dt>Original</dt><dd>{selected.original}</dd><dt>Resolved URL</dt><dd>{selected.url || 'Not resolved'}</dd>{selected.width ? <><dt>Dimensions</dt><dd>{selected.width} x {selected.height || '?'}</dd></> : null}</dl>
+              <dl className="asset-metadata"><dt>Stored label</dt><dd>{selected.label}</dd><dt>File type</dt><dd>{assetFileExtension(selected)}</dd><dt>Original</dt><dd>{selected.original}</dd><dt>Resolved URL</dt><dd>{selected.url || 'Not resolved'}</dd>{selected.width ? <><dt>Dimensions</dt><dd>{selected.width} x {selected.height || '?'}</dd></> : null}</dl>
             </>
           ) : <p className="empty-note">Select an asset to inspect it.</p>}
         </section>
@@ -1853,6 +1891,13 @@ function Lightbox({ asset, onClose }: { asset: ArchiveAsset | null; onClose: () 
   );
 }
 
+function restoreConversationListScroll(position: number) {
+  window.requestAnimationFrame(() => {
+    const list = document.querySelector<HTMLElement>('.conversation-list');
+    if (list) list.scrollTop = position;
+  });
+}
+
 function LibrarySetup({
   status,
   busy,
@@ -2128,9 +2173,13 @@ export default function App() {
 
   function mutateConversationRecord(key: 'favorites' | 'pinned') {
     if (!selected) return;
+    const listScroll = key === 'pinned' ? document.querySelector<HTMLElement>('.conversation-list')?.scrollTop ?? null : null;
     if (isTauriRuntime()) {
       const action = key === 'favorites' ? toggleFavorite : togglePin;
-      action(selected.id).then((state) => state && setViewerState(state)).catch((err) => console.error(err));
+      action(selected.id).then((state) => {
+        if (state) setViewerState(state);
+        if (listScroll !== null) restoreConversationListScroll(listScroll);
+      }).catch((err) => console.error(err));
       return;
     }
     setViewerState((state) => {
@@ -2139,6 +2188,7 @@ export default function App() {
       else record[selected.id] = { conversationId: selected.id, createdAt: Date.now() };
       return { ...state, [key]: record };
     });
+    if (listScroll !== null) restoreConversationListScroll(listScroll);
   }
 
   function toggleRead() {

@@ -9,6 +9,7 @@ This document is the internal governance and handoff entry point. Existing `READ
 ## Governance
 
 - [Project manifest](Chat.manifest.toml)
+- [Project proposal](Project-Proposal.md)
 - [Modification instructions](AGENTS.md)
 - [DRS canonical standard](D:/.library/aptlantis_core/DRS/README.md)
 - [Workspace Governance Standard](D:/.library/aptlantis_core/WGS/README.md)

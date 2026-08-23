@@ -463,6 +463,21 @@ pub fn export_document_markdown(
 }
 
 #[tauri::command]
+pub fn export_code_snippet(target_path: String, code: String) -> Result<String, String> {
+    let path = PathBuf::from(&target_path);
+    if path.is_dir() {
+        return Err("Choose a file path, not a folder.".to_string());
+    }
+    if let Some(parent) = path.parent() {
+        if !parent.exists() {
+            return Err(format!("Export folder does not exist: {}", parent.display()));
+        }
+    }
+    fs::write(&path, code).map_err(|err| format!("Could not export code snippet: {err}"))?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 pub fn get_dashboard(app: AppHandle) -> Result<LibraryStatus, String> {
     get_library_status(app)
 }

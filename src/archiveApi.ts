@@ -1,5 +1,5 @@
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import { open, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import type {
   ArchiveIndex,
   ArtifactIndex,
@@ -128,6 +128,13 @@ export async function loadDocumentArtifactContent(artifact: DocumentArtifact): P
 export async function exportDocumentMarkdown(artifact: DocumentArtifact, markdown: string) {
   if (!isTauriRuntime()) return null;
   return invoke<string>('export_document_markdown', { artifactId: artifact.id, markdown });
+}
+
+export async function exportCodeSnippet(code: string, defaultFileName: string) {
+  if (!isTauriRuntime()) return null;
+  const targetPath = await saveDialog({ title: 'Export code snippet', defaultPath: defaultFileName });
+  if (!targetPath) return null;
+  return invoke<string>('export_code_snippet', { targetPath, code });
 }
 
 export async function loadConversation(conversationId: string): Promise<ConversationFile> {

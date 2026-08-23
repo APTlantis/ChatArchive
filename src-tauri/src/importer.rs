@@ -1919,9 +1919,12 @@ mod tests {
     #[test]
     fn loads_sharded_openai_export() {
         let source = std::env::var("CHATARCHIVE_IMPORT_SMOKE_SOURCE")
-            .expect("Set CHATARCHIVE_IMPORT_SMOKE_SOURCE to an OpenAI export folder");
-        let (conversations, raw_files) = load_openai_conversations(Path::new(&source))
-            .expect("load sharded OpenAI conversations");
+            .map(PathBuf::from)
+            .ok()
+            .filter(|path| path.exists())
+            .unwrap_or_else(|| fixture_path("openai-export"));
+        let (conversations, raw_files) =
+            load_openai_conversations(&source).expect("load sharded OpenAI conversations");
         assert!(
             !conversations.is_empty(),
             "conversation shards should produce conversations"

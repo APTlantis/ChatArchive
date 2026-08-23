@@ -26,7 +26,7 @@ test('dashboard and all Phase 2 explorers render and respond', async ({ page }) 
   await page.getByRole('button', { name: 'Assets', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Asset Explorer' })).toBeVisible();
   await expect(page.locator('.asset-artifact-row')).toHaveCount(500);
-  await expect(page.getByText('Showing first 500 matches. Narrow the search or choose an asset type.')).toBeVisible();
+  await expect(page.getByText('Showing first 500 matches. Narrow the search, asset state, or file type.')).toBeVisible();
   await page.getByRole('button', { name: 'Missing 1' }).click();
   await expect(page.getByText('Local asset not found')).toBeVisible();
 });

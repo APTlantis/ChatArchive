@@ -21,6 +21,7 @@ fn main() {
             commands::get_document_artifact_content,
             commands::list_asset_artifacts,
             commands::export_document_markdown,
+            commands::export_code_snippet,
             commands::search_conversations,
             commands::get_dashboard,
             commands::update_viewer_state,

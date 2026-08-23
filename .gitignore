@@ -11,3 +11,6 @@
 /.qa/
 /playwright-report/
 /coverage/
+
+# Development certificate
+devcert.pfx

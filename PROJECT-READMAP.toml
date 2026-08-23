@@ -1,0 +1,91 @@
+schema = "cityhall.project-readmap"
+version = "1.0"
+
+[project]
+name = "ChatArchive"
+root = "D:\\DRS\\ChatArchive"
+generated_by = "PROJECT-READMAP shallow backfill 2026-08-23"
+last_filled = "2026-08-23"
+requested_path = "D:\\DRS\\Chat Archive"
+path_note = "Requested path was not present; read map was placed in the current physical project root."
+
+[budget]
+analyzer_file_budget = 25
+reserved_mandatory = 4
+remaining_exploratory = 21
+
+[[mandatory]]
+path = "Chat.manifest.toml"
+rank = 1
+status = "present"
+reason = "Canonical machine-readable project metadata"
+
+[[mandatory]]
+path = "Project-README.md"
+rank = 2
+status = "present"
+reason = "Canonical project overview and operator context"
+
+[[mandatory]]
+path = "AGENTS.md"
+rank = 3
+status = "present"
+reason = "Project-local agent instructions"
+
+[[mandatory]]
+path = "Project-Proposal.md"
+rank = 4
+status = "present"
+reason = "PPS project intent, scope, boundaries, and version shape"
+
+[[priority]]
+path = "docs/ARCHITECTURE.md"
+rank = 5
+status = "missing"
+reason = "Current architecture and implementation model, when established"
+
+[[priority]]
+path = "docs/Release-v0.1.1.md"
+rank = 6
+status = "present"
+reason = "Release posture and evidence summary, when applicable"
+
+[[evidence]]
+path = "artifacts/"
+status = "missing"
+reason = "Expected location for generated project artifacts and verification evidence"
+
+[[secondary]]
+path = "docs/"
+status = "present"
+reason = "Supporting project documentation or examples"
+
+[[exclude]]
+path = "node_modules/"
+status = "present"
+reason = "Generated dependency tree"
+
+[[exclude]]
+path = "dist/"
+status = "present"
+reason = "Generated distribution output"
+
+[[exclude]]
+path = "build/"
+status = "present"
+reason = "Generated build output"
+
+[[exclude]]
+path = "target/"
+status = "present"
+reason = "Generated Rust build output"
+
+[[exclude]]
+path = "src-tauri/target/"
+status = "present"
+reason = "Generated Tauri/Rust build output"
+
+[[exclude]]
+path = "__pycache__/"
+status = "present"
+reason = "Generated Python bytecode cache"

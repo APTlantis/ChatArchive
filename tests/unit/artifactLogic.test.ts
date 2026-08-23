@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   countAssetKinds,
+  countAssetExtensions,
+  assetDisplayName,
+  assetFileExtension,
   countCodeLanguages,
   countDocumentTypes,
   filterAssetArtifacts,
@@ -37,13 +40,17 @@ describe('artifact explorer logic', () => {
 
   it('counts asset facets and searches pointer, URL, label, and conversation', () => {
     const assets: AssetArtifact[] = [
-      { ...base, id: 'local', type: 'asset', kind: 'local', label: 'Screenshot', original: 'file-service://one', url: 'local-file://one' },
+      { ...base, id: 'local', type: 'asset', kind: 'local', label: 'image_asset_pointer', original: 'file-service://one', url: 'local-file://archive/assets/screenshot.png', width: 320, height: 180 },
       { ...base, id: 'external', type: 'asset', kind: 'external', label: 'Reference', original: 'https://example.test/a.png', url: 'https://example.test/a.png' },
       { ...base, id: 'missing', type: 'asset', kind: 'missing', label: 'Lost', original: 'file-service://lost', url: '' },
     ];
     expect(countAssetKinds(assets)).toEqual({ local: 1, external: 1, missing: 1 });
-    expect(filterAssetArtifacts(assets, 'missing', 'lost').map((item) => item.id)).toEqual(['missing']);
-    expect(filterAssetArtifacts(assets, 'all', 'example.test').map((item) => item.id)).toEqual(['external']);
+    expect(countAssetExtensions(assets)).toEqual([{ name: 'png', count: 2 }, { name: 'no extension', count: 1 }]);
+    expect(assetDisplayName(assets[0])).toBe('screenshot.png');
+    expect(assetFileExtension(assets[0])).toBe('png');
+    expect(filterAssetArtifacts(assets, 'missing', 'all', 'lost').map((item) => item.id)).toEqual(['missing']);
+    expect(filterAssetArtifacts(assets, 'all', 'png', 'example.test').map((item) => item.id)).toEqual(['external']);
+    expect(filterAssetArtifacts(assets, 'all', 'png', '320x180').map((item) => item.id)).toEqual(['local']);
   });
 
   it('bounds lists at 500 and repairs selection after filtering', () => {

@@ -45,6 +45,7 @@ maintainer = "Herb"
 root = "D:\\DRS\\Chat"
 
 [documentation]
+project_proposal = "Project-Proposal.md"
 project_readme = "Project-README.md"
 readme = "README.md"
 
@@ -76,10 +77,12 @@ archived_manifests = []
 read_first = [
     "AGENTS.md",
     "Chat.manifest.toml",
+    "Project-Proposal.md",
     "Project-README.md",
 ]
 authoritative_docs = [
     "Chat.manifest.toml",
+    "Project-Proposal.md",
     "Project-README.md",
     "AGENTS.md",
 ]
