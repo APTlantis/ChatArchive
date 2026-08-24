@@ -2,24 +2,24 @@
 schema = "APTlantis Entity Manifest"
 schema_version = "2.4"
 manifest_type = "project"
-canonical_name = "Chat.manifest.toml"
-last_updated = "2026-07-08"
+canonical_name = "ChatArchive.manifest.toml"
+last_updated = "2026-08-24"
 maintainer = "Herb"
 
 [entity]
-id = "chat"
-title = "Chat"
+id = "chatarchive"
+title = "ChatArchive"
 kind = "project"
 class = "project"
-status = "blocked"
+status = "active"
 description = "Tauri desktop application for importing, browsing, and managing OpenAI conversation exports."
 tags = []
 
 [project]
 type = "desktop-application"
 portfolio_class = "project"
-stage = "blocked"
-version = "0.1.1"
+stage = "active"
+version = "0.1.2"
 
 [governance]
 primary_standard = "DRS"
@@ -37,12 +37,12 @@ additional_standard_paths = [
 inherits_from = "..\\DRS.manifest.toml"
 
 [lifecycle]
-state = "blocked"
-last_reviewed = "2026-07-08"
+state = "active"
+last_reviewed = "2026-08-24"
 maintainer = "Herb"
 
 [paths]
-root = "D:\\DRS\\Chat"
+root = "D:\\DRS\\ChatArchive"
 
 [documentation]
 project_proposal = "Project-Proposal.md"
@@ -76,18 +76,18 @@ archived_manifests = []
 [agent]
 read_first = [
     "AGENTS.md",
-    "Chat.manifest.toml",
+    "ChatArchive.manifest.toml",
     "Project-Proposal.md",
     "Project-README.md",
 ]
 authoritative_docs = [
-    "Chat.manifest.toml",
+    "ChatArchive.manifest.toml",
     "Project-Proposal.md",
     "Project-README.md",
     "AGENTS.md",
 ]
 safe_to_modify = true
-notes = "Existing code and artifacts outrank inferred placeholder state; verify before updating lifecycle claims."
+notes = "ChatArchive is an active, adoptable Windows Store/MSIX release candidate; local packaging and WACK evidence remain distinct from Partner Center certification, Microsoft signing, and publication."
 
 [structure]
 required_files = []
@@ -98,22 +98,22 @@ required_child_project_files = [
 ]
 
 [verification]
-level = "metadata-reconciled"
+level = "release-candidate-evidence"
 evidence = "package.json, README.md, tests, and documented installer gate"
-reviewed = "2026-07-22"
+reviewed = "2026-08-24"
 build_verified = true
 tests_verified = true
 artifact_verified = false
 release_verified = false
 
 [release]
-version = "0.1.1"
-status = "patch-build-produced"
-date = "2026-07-22"
-summary = "Patch build for Blue Slate visual adoption, new ChatArchive logo/icon assets, and packaged Windows GUI subsystem so release builds do not spawn a console window."
-release_note = "docs\\Release-v0.1.1.md"
+version = "0.1.2"
+status = "store-msix-release-candidate"
+date = "2026-08-24"
+summary = "Windows-first Microsoft Store release candidate using a direct-executable MSIX package with aligned 0.1.2 product and 0.1.2.0 package versions."
+release_note = "docs\\Release-v0.1.2-Scope.md"
 release_claim = false
-known_blocker = "Full DRS release verification remains blocked until Partner Center identity, Store certification, Microsoft signing/publication, final submission evidence, and broader archive-library preservation evidence are complete."
+known_blocker = "Public release remains pending Partner Center identity confirmation, Store certification, Microsoft signing/publication, final submission evidence, and broader archive-library preservation evidence."
 
 [release.next]
 version = "0.1.2"
@@ -150,17 +150,17 @@ microsoft_signed_package = false
 
 [release.evidence.store_msix_package]
 status = "pass"
-package = "src-tauri\\target\\store-msix\\packages\\Aptlantis.ChatArchive_1.0.2.0_x64.msix"
-sha256 = "B15BC61DBEC04A822D7673E7C938F233D377D3DD96DE05D0A8372D695A2EFC67"
-size = 10667733
+package = "src-tauri\\target\\store-msix\\packages\\Aptlantis.ChatArchive_0.1.2.0_x64.msix"
+sha256 = "2B13826B7CF50C5C46F11ED89DD5BD4411369748E36EAA8C062B6447B20139B0"
+size = 9241065
 package_name = "Aptlantis.ChatArchive"
-package_version = "1.0.2.0"
+package_version = "0.1.2.0"
 package_architecture = "x64"
 app_executable = "chatarchive.exe"
-signed_for_local_sideload = true
+signed_for_local_sideload = false
 store_identity_reserved = false
 local_only = true
-notes = "Final-name local MSIX package built without the .Smoke identity and signed with the local development certificate for sideload validation. No installer or private signing payloads were staged. Local WACK and uninstall/reinstall evidence now exist for this package. Partner Center identity confirmation, Microsoft certification, Microsoft re-signing, and publication remain pending."
+notes = "Current 0.1.2.0 Store-shaped unsigned smoke package rebuilt from the refreshed executable and master aqua Windows assets. It is packaging evidence only; historical signed/WACK/lifecycle evidence remains tied to the prior 1.0.2.0 package. Partner Center identity confirmation, Microsoft certification, Microsoft re-signing, and publication remain pending."
 
 
 [release.evidence.store_msix_install_launch]

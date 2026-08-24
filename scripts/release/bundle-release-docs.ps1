@@ -1,7 +1,7 @@
 param(
   [string]$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
   [string]$Version = '0.1.2',
-  [string]$PackageVersion = '1.0.2.0',
+  [string]$PackageVersion = '0.1.2.0',
   [switch]$IncludeMsix
 )
 

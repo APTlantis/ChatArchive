@@ -28,7 +28,7 @@ Keep these responsibilities separate:
 Use two version concepts when needed:
 
 - Product version: the app release label, such as `0.1.2`.
-- Store package version: MSIX four-part package identity, such as `1.0.2.0`.
+- Store package version: MSIX four-part package identity, such as `0.1.2.0`.
 
 For Store MSIX package identity:
 

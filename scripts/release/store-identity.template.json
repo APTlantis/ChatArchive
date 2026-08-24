@@ -3,7 +3,7 @@
   "package": {
     "name": "REPLACE_WITH_PARTNER_CENTER_PACKAGE_IDENTITY_NAME",
     "publisher": "CN=REPLACE_WITH_PARTNER_CENTER_PUBLISHER",
-    "version": "1.0.2.0",
+    "version": "0.1.2.0",
     "processorArchitecture": "x64"
   },
   "app": {
