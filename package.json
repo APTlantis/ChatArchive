@@ -17,7 +17,8 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "release:msix": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/build-store-msix.ps1"
+    "release:msix": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/build-store-msix.ps1",
+    "release:docs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/bundle-release-docs.ps1"
   },
   "dependencies": {
     "@mermaid-js/mermaid-zenuml": "^0.2.3",

@@ -6,7 +6,7 @@
 
 ## Executive result
 
-The Phase 2 regression harness is implemented and the unit, Rust, rendered UI, production build, privacy, isolated real-export import, reconciliation, document-fidelity, and native persistence gates pass. This report is historical evidence for the MSI/NSIS-era gate. The v0.1.2 Windows release target has moved to Microsoft Store MSIX, so release readiness now requires a clean MSIX package, WACK evidence, MSIX install/launch/uninstall/data-preservation evidence, final MSIX hash, and Partner Center certification/publication evidence.
+The Phase 2 regression harness is implemented and the unit, Rust, rendered UI, production build, privacy, isolated real-export import, reconciliation, document-fidelity, and native persistence gates pass. This report is historical evidence for the MSI/NSIS-era gate. The v0.1.2 Windows release target has moved to Microsoft Store MSIX. A local WACK pass now exists for the signed final-name Store-shaped package, and local uninstall/reinstall/launch evidence has been captured. Release readiness still requires Partner Center identity confirmation, Store certification, Microsoft re-signing, publication evidence, and a broader archive-library preservation baseline.
 
 The old installer restoration failure remains useful cautionary evidence: lifecycle audits must start from a known baseline and preserve user data. It is no longer the public artifact contract for v0.1.2 because NSIS/MSI are not the primary Windows release path.
 
@@ -34,9 +34,10 @@ The old installer restoration failure remains useful cautionary evidence: lifecy
 | Native isolated import | Pass | Exact live baselines, zero orphan source IDs, state survived forced relaunch |
 | Recovered document fidelity | Pass | Source `.dat` and archived document bytes/hash match |
 | Historical installer lifecycle | **Fail** | Exact pre-test Windows Installer registration could not be restored after package-scope mismatch |
-| Store MSIX package | Pending | Clean package must launch `chatarchive.exe` directly and exclude installer payloads/private signing material |
-| WACK Store MSIX validation | Pending | Required before Partner Center submission |
-| MSIX lifecycle | Pending | Install, launch, uninstall, and user-data preservation from a known baseline |
+| Store MSIX package | Final-name signed local build pass | `Aptlantis.ChatArchive_1.0.2.0_x64.msix`; SHA-256 `B15BC61DBEC04A822D7673E7C938F233D377D3DD96DE05D0A8372D695A2EFC67`; launches `chatarchive.exe`; excludes installer/private signing payloads |
+| WACK Store MSIX validation | Final-name signed package pass | `trust\\ChatArchive WACK v1.0.2.0 Signed.xml`; overall PASS for `Aptlantis.ChatArchive_1.0.2.0_x64__jfrcsngvdwx7g`; app entry is `chatarchive.exe`; optional blocked-executable analyzer still flags `chatarchive.exe` references |
+| MSIX install and launch | Pass | Installed as `Aptlantis.ChatArchive_1.0.2.0_x64__jfrcsngvdwx7g` with Developer signature and Status `Ok`; launched via AppsFolder URI |
+| MSIX uninstall/reinstall | Pass, local sideload | Stopped running process, removed package, confirmed absent, reinstalled package, Status `Ok`, relaunched from AppsFolder; `D:\\DRS\\ChatArchive` remained present; `A:\\ChatArchive` was not present, so broader archive-library preservation evidence remains pending |
 | Partner Center publication | Pending | Store certification, Microsoft re-signing, and publication evidence required |
 | In-app browser compatibility smoke | Not executed | Browser backend rejected the tab/session binding; Playwright static-browser matrix remains green |
 
@@ -84,7 +85,7 @@ These are informational, not release thresholds.
 | SQLite database | 596,013,056 bytes |
 | MSI | 6,594,560 bytes (historical fallback evidence) |
 | NSIS | 5,132,443 bytes (historical fallback evidence) |
-| Store MSIX | Pending final v0.1.2 package |
+| Store MSIX | Final-name local package built, signed for sideload, WACK PASS, uninstall/reinstall PASS; Partner Center evidence pending |
 
 ## Bundle hashes
 
@@ -99,6 +100,7 @@ These are informational, not release thresholds.
 - `npm run test:ui`: Playwright desktop/mobile and accessibility suite
 - `npm run test:native`: isolated real-export import, reconciliation, fidelity, and persistence audit
 - `npm run release:msix`: Store MSIX build from untracked Partner Center identity config
+- `npm run release:docs`: release document, WACK, trust, and evidence bundle for downstream hash/signing
 - `npm run test:installer`: historical MSI/NSIS lifecycle audit retained for fallback evidence
 - `npm run qa:phase2`: complete release gate
 
@@ -106,4 +108,5 @@ The installer runner was hardened after the failure to discover install destinat
 
 ## Stage 3 recommendation
 
-**Do not begin Stage 3.** Fill the Partner Center identity config, build a clean Store MSIX, run WACK, complete the MSIX lifecycle audit from a known baseline, record the final MSIX hash, and require Partner Center certification/publication evidence before release-ready claims. No functional archive, explorer, fidelity, or data-reconciliation defect was found in the gates that completed.
+**Do not begin Stage 3.** Replace the local development identity with reserved Partner Center identity values, keep the final MSIX hash evidence with the release bundle, and require Partner Center certification/publication evidence before release-ready claims. The final-name local MSIX is built, WACK-passed, and uninstall/reinstall-tested for sideload validation, but Microsoft certification, Microsoft re-signing, Store publication, and a broader archive-library preservation baseline remain pending. No functional archive, explorer, fidelity, or data-reconciliation defect was found in the gates that completed.
+

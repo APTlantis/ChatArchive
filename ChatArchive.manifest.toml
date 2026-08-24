@@ -113,7 +113,7 @@ date = "2026-07-22"
 summary = "Patch build for Blue Slate visual adoption, new ChatArchive logo/icon assets, and packaged Windows GUI subsystem so release builds do not spawn a console window."
 release_note = "docs\\Release-v0.1.1.md"
 release_claim = false
-known_blocker = "Full DRS release verification remains blocked until Store MSIX packaging, WACK, MSIX lifecycle, final hash, Partner Center certification, and publication evidence are complete."
+known_blocker = "Full DRS release verification remains blocked until Partner Center identity, Store certification, Microsoft signing/publication, final submission evidence, and broader archive-library preservation evidence are complete."
 
 [release.next]
 version = "0.1.2"
@@ -125,7 +125,7 @@ store_identity_template = "scripts\\release\\store-identity.template.json"
 store_packaging_script = "scripts\\release\\build-store-msix.ps1"
 msix_posture = "Primary public Windows release artifact; local self-signed packages are sideload evidence only."
 nsis_posture = "Developer fallback or historical evidence only; not the public v0.1.2 release contract."
-windows_posture = "First public release target; release-ready claims require clean MSIX packaging, WACK, MSIX lifecycle, final hash, Partner Center certification, and publication evidence."
+windows_posture = "First public release target; release-ready claims require Partner Center identity, Store certification, Microsoft signing/publication, final submission evidence, and broader archive-library preservation evidence."
 macos_posture = "Pending VM verification; do not claim ready."
 linux_posture = "Pending VM verification; do not claim ready."
 deferred_features = [
@@ -140,11 +140,78 @@ ui_tests = true
 tauri_build = true
 windows_gui_subsystem = true
 installer_lifecycle = false
-store_msix_build = false
-wack = false
+store_msix_build = true
+wack = true
 msix_lifecycle = false
+msix_uninstall_reinstall = true
 partner_center_submission = false
 microsoft_signed_package = false
+
+
+[release.evidence.store_msix_package]
+status = "pass"
+package = "src-tauri\\target\\store-msix\\packages\\Aptlantis.ChatArchive_1.0.2.0_x64.msix"
+sha256 = "B15BC61DBEC04A822D7673E7C938F233D377D3DD96DE05D0A8372D695A2EFC67"
+size = 10667733
+package_name = "Aptlantis.ChatArchive"
+package_version = "1.0.2.0"
+package_architecture = "x64"
+app_executable = "chatarchive.exe"
+signed_for_local_sideload = true
+store_identity_reserved = false
+local_only = true
+notes = "Final-name local MSIX package built without the .Smoke identity and signed with the local development certificate for sideload validation. No installer or private signing payloads were staged. Local WACK and uninstall/reinstall evidence now exist for this package. Partner Center identity confirmation, Microsoft certification, Microsoft re-signing, and publication remain pending."
+
+
+[release.evidence.store_msix_install_launch]
+status = "pass"
+package_full_name = "Aptlantis.ChatArchive_1.0.2.0_x64__jfrcsngvdwx7g"
+version = "1.0.2.0"
+signature_kind = "Developer"
+install_status = "Ok"
+install_location = "C:\\Program Files\\WindowsApps\\Aptlantis.ChatArchive_1.0.2.0_x64__jfrcsngvdwx7g"
+launch_command = "shell:AppsFolder\\Aptlantis.ChatArchive_jfrcsngvdwx7g!chatArchive"
+launch_result = "chatarchive process started"
+validated = "2026-08-23"
+local_only = true
+notes = "Signed final-name MSIX installed and launched locally for hands-on validation. This is not Microsoft Store signing, Partner Center certification, or a full install/update/uninstall data-preservation lifecycle audit."
+
+[release.evidence.store_msix_uninstall_reinstall]
+status = "pass"
+evidence = ".qa\\release-evidence\\store-msix-lifecycle-2026-08-23.json"
+package = "src-tauri\\target\\store-msix\\packages\\Aptlantis.ChatArchive_1.0.2.0_x64.msix"
+sha256 = "B15BC61DBEC04A822D7673E7C938F233D377D3DD96DE05D0A8372D695A2EFC67"
+size = 10667733
+package_full_name = "Aptlantis.ChatArchive_1.0.2.0_x64__jfrcsngvdwx7g"
+version = "1.0.2.0"
+signature_kind = "Developer"
+before_uninstall_status = "Ok"
+after_uninstall_installed = false
+after_reinstall_status = "Ok"
+launch_command = "shell:AppsFolder\\Aptlantis.ChatArchive_jfrcsngvdwx7g!chatArchive"
+launch_result = "chatarchive process started"
+validated = "2026-08-23T07:32:26-04:00"
+external_library_checked = "D:\\DRS\\ChatArchive"
+external_library_preserved = true
+local_only = true
+notes = "Signed final-name MSIX was stopped, uninstalled with Remove-AppxPackage, confirmed absent, reinstalled with Add-AppxPackage, confirmed Status Ok, and launched from the AppsFolder URI. A:\\ChatArchive was not present on this workstation, so data-preservation evidence is limited to confirming the workspace/external path used for this release work remained present; no archive library deletion was performed."
+
+[release.evidence.store_msix_wack]
+status = "pass"
+report = "trust\\ChatArchive WACK v1.0.2.0 Signed.xml"
+report_generated = "2026-08-23T06:10:49-04:00"
+tool_version = "10.0.28000.2526"
+package_name = "Aptlantis.ChatArchive"
+package_version = "1.0.2.0"
+package_architecture = "x64"
+app_executable = "chatarchive.exe"
+app_product_version = "0.1.2"
+app_file_version = "0.1.2.0"
+package_full_name = "Aptlantis.ChatArchive_1.0.2.0_x64__jfrcsngvdwx7g"
+overall_result = "PASS"
+partial_run = false
+local_only = true
+notes = "Local WACK validation of the signed final-name Store-shaped MSIX package. Optional blocked-executable analyzer still reports references in chatarchive.exe, but the overall WACK result is PASS. Partner Center certification, Microsoft re-signing, and publication remain pending."
 
 [[release.artifacts]]
 name = "ChatArchive_0.1.1_x64_en-US.msi"
@@ -167,3 +234,4 @@ kind = "exe"
 size = 15828992
 sha256 = "CC4FB833C34F0D2EA9B1EFC9890ECE08AFDA07A6CE3072790E8B4CAD4C9DAC51"
 subsystem = "Windows GUI"
+
