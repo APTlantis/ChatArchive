@@ -333,4 +333,3 @@ A Windows Store-MSIX release candidate is locally ready for Partner Center submi
 - remaining Store publication gates are clearly marked pending.
 
 It is publicly release-ready only after Partner Center certification, Microsoft signing, publication, and distributed-package verification are complete.
-

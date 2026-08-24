@@ -24,3 +24,4 @@
 *.pfx
 *.cer
 *.pvk
+/.evals_tmp/
