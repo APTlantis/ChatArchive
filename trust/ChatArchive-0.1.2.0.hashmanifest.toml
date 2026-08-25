@@ -1,0 +1,20 @@
+# Release Hash Manifest
+
+[release]
+name = "ChatArchive"
+version = "0.1.2.0"
+artifact = "Aptlantis.ChatArchive_0.1.2.0_x64.msix"
+path = "D:\\DRS\\ChatArchive\\src-tauri\\target\\store-msix\\packages\\Aptlantis.ChatArchive_0.1.2.0_x64.msix"
+size_bytes = 9242612
+
+[[hash]]
+algorithm = "SHA256"
+value = "543cced660ab40d6071326bf4019d773b591e55d6778b383d69e29cca2a35a3d"
+
+[[hash]]
+algorithm = "BLAKE3-256"
+value = "51ffae69dfbcae2a76d7b278c99949b84e44e031f41cf14839ea4709a1660a3a"
+
+[[hash]]
+algorithm = "KT128"
+value = "IYr4GWg/eABHMvpWJGYaxvhfTn1HARIzGwu8eLg3eksDy/ZcXmTn+9pJN5G49YI/uWuf04WwWr6+uM0CoSNNVA7ZZNugRyxa0uUSIA/dvRXSDJiRmOI/a/yUNtdVhqJY05TKwRZoTRs2kdkZRS698Wn+J4Yx7hgZaTDpol8aOKA="

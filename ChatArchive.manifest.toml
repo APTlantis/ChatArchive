@@ -151,16 +151,16 @@ microsoft_signed_package = false
 [release.evidence.store_msix_package]
 status = "pass"
 package = "src-tauri\\target\\store-msix\\packages\\Aptlantis.ChatArchive_0.1.2.0_x64.msix"
-sha256 = "2B13826B7CF50C5C46F11ED89DD5BD4411369748E36EAA8C062B6447B20139B0"
-size = 9241065
+sha256 = "543CCED660AB40D6071326BF4019D773B591E55D6778B383D69E29CCA2A35A3D"
+size = 9242612
 package_name = "Aptlantis.ChatArchive"
 package_version = "0.1.2.0"
 package_architecture = "x64"
 app_executable = "chatarchive.exe"
-signed_for_local_sideload = false
+signed_for_local_sideload = true
 store_identity_reserved = false
 local_only = true
-notes = "Current 0.1.2.0 Store-shaped unsigned smoke package rebuilt from the refreshed executable and master aqua Windows assets. It is packaging evidence only; historical signed/WACK/lifecycle evidence remains tied to the prior 1.0.2.0 package. Partner Center identity confirmation, Microsoft certification, Microsoft re-signing, and publication remain pending."
+notes = "Current 0.1.2.0 Store-shaped package rebuilt from the refreshed executable and master aqua Windows assets, then signed with the local development certificate for sideload validation. It is local evidence only; historical WACK/lifecycle evidence remains tied to the prior 1.0.2.0 package. Partner Center identity confirmation, Microsoft certification, Microsoft re-signing, and publication remain pending."
 
 
 [release.evidence.store_msix_install_launch]
