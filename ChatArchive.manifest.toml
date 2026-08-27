@@ -87,7 +87,7 @@ authoritative_docs = [
     "AGENTS.md",
 ]
 safe_to_modify = true
-notes = "ChatArchive is an active, adoptable Windows Store/MSIX release candidate; local packaging and WACK evidence remain distinct from Partner Center certification, Microsoft signing, and publication."
+notes = "ChatArchive is an active, adoptable Windows Store/MSIX release available through the Microsoft Store. Local packaging and WACK evidence remain distinct from the Store listing and any independent distributed-package signature verification."
 
 [structure]
 required_files = []
@@ -98,24 +98,24 @@ required_child_project_files = [
 ]
 
 [verification]
-level = "release-candidate-evidence"
-evidence = "package.json, README.md, tests, and documented installer gate"
-reviewed = "2026-08-24"
+level = "store-available-operator-evidence"
+evidence = "package.json, README.md, tests, documented installer gate, and operator-provided Microsoft Store listing capture"
+reviewed = "2026-08-26"
 build_verified = true
 tests_verified = true
 artifact_verified = false
-release_verified = false
+release_verified = true
 
 [release]
 version = "0.1.2"
-status = "store-msix-release-candidate"
-date = "2026-08-24"
-summary = "Windows-first Microsoft Store release candidate using a direct-executable MSIX package with aligned 0.1.2 product and 0.1.2.0 package versions."
+status = "store-available"
+date = "2026-08-26"
+summary = "Windows-first Microsoft Store release using a direct-executable MSIX package with aligned 0.1.2 product and 0.1.2.0 package versions."
 release_note = "docs\\Release-v0.1.2-Scope.md"
-release_claim = false
-known_blocker = "Public release remains pending Partner Center identity confirmation, Store certification, Microsoft signing/publication, final submission evidence, and broader archive-library preservation evidence."
+release_claim = true
+known_blocker = "For future package changes, retain fresh Store submission, distributed-package, and archive-library preservation evidence. The existing local evidence does not independently verify the distributed package signature."
 
-[release.next]
+[release.delivery]
 version = "0.1.2"
 scope_note = "docs\\Release-v0.1.2-Scope.md"
 distribution = "Microsoft Store"
@@ -125,7 +125,7 @@ store_identity_template = "scripts\\release\\store-identity.template.json"
 store_packaging_script = "scripts\\release\\build-store-msix.ps1"
 msix_posture = "Primary public Windows release artifact; local self-signed packages are sideload evidence only."
 nsis_posture = "Developer fallback or historical evidence only; not the public v0.1.2 release contract."
-windows_posture = "First public release target; release-ready claims require Partner Center identity, Store certification, Microsoft signing/publication, final submission evidence, and broader archive-library preservation evidence."
+windows_posture = "Current public release channel: Microsoft Store. Future package changes require the normal Store submission, documentation, and verification evidence."
 macos_posture = "Pending VM verification; do not claim ready."
 linux_posture = "Pending VM verification; do not claim ready."
 deferred_features = [
@@ -144,7 +144,8 @@ store_msix_build = true
 wack = true
 msix_lifecycle = false
 msix_uninstall_reinstall = true
-partner_center_submission = false
+microsoft_store_listing = true
+partner_center_submission = true
 microsoft_signed_package = false
 
 
@@ -160,7 +161,7 @@ app_executable = "chatarchive.exe"
 signed_for_local_sideload = true
 store_identity_reserved = false
 local_only = true
-notes = "Current 0.1.2.0 Store-shaped package rebuilt from the refreshed executable and master aqua Windows assets, then signed with the local development certificate for sideload validation. It is local evidence only; historical WACK/lifecycle evidence remains tied to the prior 1.0.2.0 package. Partner Center identity confirmation, Microsoft certification, Microsoft re-signing, and publication remain pending."
+notes = "Historical pre-publication local 0.1.2.0 Store-shaped package rebuilt from the refreshed executable and master aqua Windows assets, then signed with the local development certificate for sideload validation. It is local evidence only; historical WACK/lifecycle evidence remains tied to the prior 1.0.2.0 package. The current public status is recorded separately by the Microsoft Store listing."
 
 
 [release.evidence.store_msix_install_launch]
@@ -211,7 +212,7 @@ package_full_name = "Aptlantis.ChatArchive_1.0.2.0_x64__jfrcsngvdwx7g"
 overall_result = "PASS"
 partial_run = false
 local_only = true
-notes = "Local WACK validation of the signed final-name Store-shaped MSIX package. Optional blocked-executable analyzer still reports references in chatarchive.exe, but the overall WACK result is PASS. Partner Center certification, Microsoft re-signing, and publication remain pending."
+notes = "Historical local WACK validation of the signed final-name Store-shaped MSIX package. Optional blocked-executable analyzer still reports references in chatarchive.exe, but the overall WACK result is PASS. It is local test evidence, not the current public-status record."
 
 [[release.artifacts]]
 name = "ChatArchive_0.1.1_x64_en-US.msi"

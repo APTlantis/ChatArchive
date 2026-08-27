@@ -2,11 +2,11 @@
 
 **Date:** June 30, 2026  
 **Platform:** Windows, native Tauri/WebView2 authoritative  
-**Result:** **FAIL - Stage 3 remains blocked; v0.1.2 Store MSIX gate pending**
+**Result:** **Historical pre-publication QA record; superseded as a Store-status record by the v0.1.2 Microsoft Store listing**
 
 ## Executive result
 
-The Phase 2 regression harness is implemented and the unit, Rust, rendered UI, production build, privacy, isolated real-export import, reconciliation, document-fidelity, and native persistence gates pass. This report is historical evidence for the MSI/NSIS-era gate. The v0.1.2 Windows release target has moved to Microsoft Store MSIX. A local WACK pass now exists for the signed final-name Store-shaped package, and local uninstall/reinstall/launch evidence has been captured. Release readiness still requires Partner Center identity confirmation, Store certification, Microsoft re-signing, publication evidence, and a broader archive-library preservation baseline.
+The Phase 2 regression harness is implemented and the unit, Rust, rendered UI, production build, privacy, isolated real-export import, reconciliation, document-fidelity, and native persistence gates pass. This report is historical evidence for the MSI/NSIS-era gate and the pre-publication MSIX work. ChatArchive is now available through the Microsoft Store; retain this report for its test results and limitations, not as the current Store-status record.
 
 The old installer restoration failure remains useful cautionary evidence: lifecycle audits must start from a known baseline and preserve user data. It is no longer the public artifact contract for v0.1.2 because NSIS/MSI are not the primary Windows release path.
 
@@ -38,7 +38,7 @@ The old installer restoration failure remains useful cautionary evidence: lifecy
 | WACK Store MSIX validation | Final-name signed package pass | `trust\\ChatArchive WACK v1.0.2.0 Signed.xml`; overall PASS for `Aptlantis.ChatArchive_1.0.2.0_x64__jfrcsngvdwx7g`; app entry is `chatarchive.exe`; optional blocked-executable analyzer still flags `chatarchive.exe` references |
 | MSIX install and launch | Pass | Installed as `Aptlantis.ChatArchive_1.0.2.0_x64__jfrcsngvdwx7g` with Developer signature and Status `Ok`; launched via AppsFolder URI |
 | MSIX uninstall/reinstall | Pass, local sideload | Stopped running process, removed package, confirmed absent, reinstalled package, Status `Ok`, relaunched from AppsFolder; `D:\\DRS\\ChatArchive` remained present; `A:\\ChatArchive` was not present, so broader archive-library preservation evidence remains pending |
-| Partner Center publication | Pending | Store certification, Microsoft re-signing, and publication evidence required |
+| Partner Center publication | Historical pending record | Superseded by the current Microsoft Store listing |
 | In-app browser compatibility smoke | Not executed | Browser backend rejected the tab/session binding; Playwright static-browser matrix remains green |
 
 ## Live invariant reconciliation
@@ -108,5 +108,5 @@ The installer runner was hardened after the failure to discover install destinat
 
 ## Stage 3 recommendation
 
-**Do not begin Stage 3.** Replace the local development identity with reserved Partner Center identity values, keep the final MSIX hash evidence with the release bundle, and require Partner Center certification/publication evidence before release-ready claims. The final-name local MSIX is built, WACK-passed, and uninstall/reinstall-tested for sideload validation, but Microsoft certification, Microsoft re-signing, Store publication, and a broader archive-library preservation baseline remain pending. No functional archive, explorer, fidelity, or data-reconciliation defect was found in the gates that completed.
+This historical recommendation applied before Store publication. Keep the final MSIX hash evidence and test records with the release bundle; use the current Microsoft Store listing for public availability rather than this report's former pending-status language. No functional archive, explorer, fidelity, or data-reconciliation defect was found in the gates that completed.
 

@@ -4,7 +4,7 @@ Date: 2026-08-23
 
 ## Release Position
 
-ChatArchive v0.1.2 is a Windows-first public release candidate for Microsoft Store distribution through MSIX.
+ChatArchive v0.1.2 is a Windows-first public release available through the Microsoft Store. This document preserves the original scope and acceptance criteria for that release.
 
 The release target is:
 
@@ -22,8 +22,6 @@ The release does not claim:
 - GitHub Releases as the primary Windows distribution channel.
 - NSIS or MSI as the public v0.1.2 release artifact.
 - Trusted direct-download signing for external installers.
-- Microsoft Store publication until Partner Center certification and publication are complete.
-- Microsoft-signed package verification until the Store has re-signed the submitted package.
 - macOS readiness.
 - Linux readiness.
 - Full cross-platform release certification.
@@ -73,9 +71,9 @@ The feature is valuable, but it is not part of the first public Windows release 
 
 The deferred Project Intelligence work can return in a later version after its behavior, documentation, persistence model, test coverage, and cross-platform expectations are reconciled.
 
-## Release Claim Wording
+## Historical Pre-Publication Claim Wording
 
-Use this posture for public-facing release notes before Store publication:
+This was the posture for public-facing release notes before Store publication:
 
 ```text
 ChatArchive v0.1.2 is a Windows-first local archive release prepared for Microsoft Store distribution through MSIX. macOS and Linux support remain pending platform verification. Project Intelligence is deferred from this release. Store publication and Microsoft-signed package verification remain pending until Partner Center certification and publication complete.
