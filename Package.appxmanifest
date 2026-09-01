@@ -9,7 +9,7 @@
   <Identity
     Name="Aptlantis.ChatArchive"
     Publisher="CN=81D6747D-F84F-4EFF-ACAA-9635D91ACCD0"
-    Version="0.1.2.0"
+    Version="1.0.3.0"
     ProcessorArchitecture="x64" />
 
   <Properties>

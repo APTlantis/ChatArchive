@@ -31,6 +31,8 @@ The currently verified archive contains 733 conversations, 29,861 visible messag
 
 > **Microsoft Store:** ChatArchive is available through the Microsoft Store. The v0.1.2 Store listing is the current public Windows distribution channel; the prior local MSIX, WACK, and lifecycle records remain useful engineering evidence, but are not substitutes for Store availability.
 
+> **Next candidate:** v0.2.0, *Export Continuity*, is a draft candidate with planned Store package version `1.0.3.0`. It adds in-place OpenAI export refresh and rollback while preserving user-authored library state. Its final package, hashes, signatures, WACK, lifecycle, and Store evidence are pending; see [the v0.2.0 release note](docs/ChatArchive%20v0.2.0%20-%20Export%20Continuity.md).
+
 ![ChatArchive in the Microsoft Store](docs/assets/chatarchive-microsoft-store-listing.png)
 
 > **Latest patch build:** v0.1.1 was rebuilt on July 22, 2026 with the Blue Slate visual pass, new ChatArchive logo/icon assets, and a packaged Windows GUI subsystem so release builds do not spawn a terminal. See [Release v0.1.1](docs/Release-v0.1.1.md) for hashes and verification evidence. This patch build does not clear the current Store MSIX release gate above.

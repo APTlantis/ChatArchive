@@ -16,11 +16,11 @@ This document is the internal governance and handoff entry point. Existing `READ
 
 ## Current state
 
-Governance metadata was refreshed on 2026-08-26: version `0.1.2`, lifecycle `active`, stage `active`. ChatArchive is available through the Microsoft Store as a Windows Store/MSIX release. The local package, WACK, and lifecycle records remain engineering evidence for the shipped line.
+The current public line is v0.1.2 through the Microsoft Store. v0.2.0, *Export Continuity*, is an active draft candidate with source version `0.2.0` and planned Store package version `1.0.3.0`; it is not yet published or Microsoft-signed. Historical local package, WACK, lifecycle, and Store records remain engineering evidence for the shipped v0.1.2 line only.
 
 The v0.1.2 release established a Windows-first Microsoft Store release using MSIX as the primary public Windows artifact. Partner Center package identity is authoritative for Store submission, and local self-signed MSIX packages are sideload evidence only. macOS and Linux readiness require platform-specific VM verification before any public claim.
 
-Project Intelligence is deferred from the v0.1.2 release surface. The release should focus on the durable archive, artifact explorer, search, export, and manual knowledge-organization workflows.
+Project Intelligence remains deferred. The candidate focuses on the durable archive, artifact explorer, search, export, manual knowledge organization, and safe refresh/restore workflow.
 
 ## Visual system
 

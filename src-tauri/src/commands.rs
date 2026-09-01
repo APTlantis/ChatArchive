@@ -26,8 +26,16 @@ fn open_library_db(app: &AppHandle) -> AppResult<(PathBuf, rusqlite::Connection)
 }
 
 const ROLLBACK_DIR: &str = "rollback";
+const ROLLBACK_METADATA: &str = "rollback.json";
 
 fn rollback_dir(library: &Path) -> PathBuf { library.join(ROLLBACK_DIR) }
+
+fn rollback_is_complete(library: &Path) -> bool {
+    let rollback = rollback_dir(library);
+    rollback.join("chatarchive.db").is_file()
+        && rollback.join("archive").is_dir()
+        && rollback.join(ROLLBACK_METADATA).is_file()
+}
 
 fn copy_directory(from: &Path, to: &Path) -> AppResult<()> {
     for entry in WalkDir::new(from) {
@@ -50,13 +58,37 @@ fn create_rollback_snapshot(library: &Path, active_archive: &Path) -> AppResult<
     fs::create_dir_all(&staging).map_err(|err| format!("Could not create rollback staging: {err}"))?;
     copy_directory(active_archive, &staging.join("archive"))?;
     fs::copy(library.join("chatarchive.db"), staging.join("chatarchive.db")).map_err(|err| format!("Could not snapshot library database: {err}"))?;
+    let metadata = serde_json::json!({
+        "schema": "chatarchive.rollback",
+        "version": 1,
+        "createdAt": Utc::now().to_rfc3339(),
+        "archiveId": active_archive.file_name().and_then(|name| name.to_str()).unwrap_or("unknown"),
+        "database": "chatarchive.db",
+        "archive": "archive"
+    });
+    fs::write(
+        staging.join(ROLLBACK_METADATA),
+        serde_json::to_vec_pretty(&metadata).map_err(|err| format!("Could not encode rollback metadata: {err}"))?,
+    )
+    .map_err(|err| format!("Could not write rollback metadata: {err}"))?;
     Ok(staging)
 }
 
 fn promote_rollback_snapshot(library: &Path, staging: &Path) -> AppResult<()> {
     let rollback = rollback_dir(library);
-    if rollback.exists() { fs::remove_dir_all(&rollback).map_err(|err| format!("Could not rotate prior rollback: {err}"))?; }
-    fs::rename(staging, &rollback).map_err(|err| format!("Could not save rollback snapshot: {err}"))
+    let previous = library.join(".rollback-previous");
+    if previous.exists() { fs::remove_dir_all(&previous).map_err(|err| format!("Could not clear prior rollback rotation: {err}"))?; }
+    if rollback.exists() {
+        fs::rename(&rollback, &previous).map_err(|err| format!("Could not preserve prior rollback during rotation: {err}"))?;
+    }
+    if let Err(err) = fs::rename(staging, &rollback) {
+        if previous.exists() { let _ = fs::rename(&previous, &rollback); }
+        return Err(format!("Could not save rollback snapshot: {err}"));
+    }
+    if previous.exists() {
+        fs::remove_dir_all(&previous).map_err(|err| format!("Could not retire superseded rollback snapshot: {err}"))?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -138,7 +170,7 @@ pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
         library_path: Some(library.to_string_lossy().to_string()),
         library_error: None,
         has_archive: index.is_some(),
-        has_rollback: rollback_dir(&library).join("chatarchive.db").is_file(),
+        has_rollback: rollback_is_complete(&library),
         state_migrated,
         index,
         artifacts,
@@ -241,7 +273,9 @@ pub fn import_openai_export(
             }
             if let Some(previous) = previous_archive {
                 if previous != build.archive_path && previous.exists() {
-                    fs::remove_dir_all(previous).map_err(|err| format!("Could not retire prior archive after snapshot: {err}"))?;
+                    if let Err(err) = fs::remove_dir_all(previous) {
+                        eprintln!("New archive is active but the prior archive could not be retired after its rollback snapshot was committed: {err}");
+                    }
                 }
             }
         }
@@ -271,7 +305,7 @@ pub fn restore_previous_import(app: AppHandle) -> Result<ImportSummary, String> 
     let rollback = rollback_dir(&library);
     let snapshot_db = rollback.join("chatarchive.db");
     let snapshot_archive = rollback.join("archive");
-    if !snapshot_db.is_file() || !snapshot_archive.is_dir() {
+    if !rollback_is_complete(&library) || !snapshot_db.is_file() || !snapshot_archive.is_dir() {
         return Err("There is no previous import available to restore.".to_string());
     }
     let live_conn = db::open_db(&library)?;
@@ -283,11 +317,58 @@ pub fn restore_previous_import(app: AppHandle) -> Result<ImportSummary, String> 
     let index = db::load_index(&snapshot_conn)?.ok_or("Rollback database has no archive index")?;
     let artifacts = db::load_artifacts(&snapshot_conn)?.ok_or("Rollback database has no artifact index")?;
     drop(snapshot_conn);
-    if restored_archive.exists() { fs::remove_dir_all(&restored_archive).map_err(|err| format!("Could not clear archive being restored: {err}"))?; }
-    copy_directory(&snapshot_archive, &restored_archive)?;
-    fs::copy(&snapshot_db, library.join("chatarchive.db")).map_err(|err| format!("Could not restore library database: {err}"))?;
-    if current_archive.exists() { fs::remove_dir_all(&current_archive).map_err(|err| format!("Could not retire replaced archive: {err}"))?; }
     promote_rollback_snapshot(&library, &staging)?;
+    let archive_staging = library.join(".restore-archive-staging");
+    let db_staging = library.join(".restore-db-staging");
+    for temporary in [&archive_staging, &db_staging] {
+        if temporary.exists() {
+            if temporary.is_dir() { fs::remove_dir_all(temporary) } else { fs::remove_file(temporary) }
+                .map_err(|err| format!("Could not clear interrupted restore staging: {err}"))?;
+        }
+    }
+    copy_directory(&snapshot_archive, &archive_staging)?;
+    fs::copy(&snapshot_db, &db_staging).map_err(|err| format!("Could not stage rollback database: {err}"))?;
+    let current_archive_retired = library.join(".restore-current-archive");
+    let restored_archive_retired = library.join(".restore-existing-archive");
+    let current_db_retired = library.join(".restore-current-db");
+    for temporary in [&current_archive_retired, &restored_archive_retired, &current_db_retired] {
+        if temporary.exists() {
+            if temporary.is_dir() { fs::remove_dir_all(temporary) } else { fs::remove_file(temporary) }
+                .map_err(|err| format!("Could not clear interrupted restore recovery data: {err}"))?;
+        }
+    }
+    fs::rename(&current_archive, &current_archive_retired).map_err(|err| format!("Could not preserve current archive during restore: {err}"))?;
+    if restored_archive.exists() {
+        if let Err(err) = fs::rename(&restored_archive, &restored_archive_retired) {
+            let _ = fs::rename(&current_archive_retired, &current_archive);
+            return Err(format!("Could not preserve prior restored archive during restore: {err}"));
+        }
+    }
+    if let Err(err) = fs::rename(&archive_staging, &restored_archive) {
+        let _ = fs::rename(&current_archive_retired, &current_archive);
+        if restored_archive_retired.exists() { let _ = fs::rename(&restored_archive_retired, &restored_archive); }
+        return Err(format!("Could not activate restored archive: {err}"));
+    }
+    let live_db = library.join("chatarchive.db");
+    if let Err(err) = fs::rename(&live_db, &current_db_retired) {
+        let _ = fs::rename(&restored_archive, &archive_staging);
+        let _ = fs::rename(&current_archive_retired, &current_archive);
+        if restored_archive_retired.exists() { let _ = fs::rename(&restored_archive_retired, &restored_archive); }
+        return Err(format!("Could not preserve current database during restore: {err}"));
+    }
+    if let Err(err) = fs::rename(&db_staging, &live_db) {
+        let _ = fs::rename(&current_db_retired, &live_db);
+        let _ = fs::rename(&restored_archive, &archive_staging);
+        let _ = fs::rename(&current_archive_retired, &current_archive);
+        if restored_archive_retired.exists() { let _ = fs::rename(&restored_archive_retired, &restored_archive); }
+        return Err(format!("Could not activate restored database: {err}"));
+    }
+    for retired in [&current_archive_retired, &restored_archive_retired, &current_db_retired] {
+        if retired.exists() {
+            let cleanup = if retired.is_dir() { fs::remove_dir_all(retired) } else { fs::remove_file(retired) };
+            if let Err(err) = cleanup { eprintln!("Restore completed but retained recovery data at {}: {err}", retired.display()); }
+        }
+    }
     Ok(ImportSummary {
         library_path: library.to_string_lossy().to_string(),
         archive_id: restored_archive.file_name().and_then(|name| name.to_str()).unwrap_or("restored").to_string(),
@@ -797,6 +878,9 @@ mod tests {
 
         assert_eq!(fs::read_to_string(rollback_dir(&library).join("archive").join("marker.txt")).unwrap(), "second");
         assert_eq!(fs::read_to_string(rollback_dir(&library).join("chatarchive.db")).unwrap(), "database-second");
+        let metadata: serde_json::Value = serde_json::from_slice(&fs::read(rollback_dir(&library).join(ROLLBACK_METADATA)).unwrap()).unwrap();
+        assert_eq!(metadata["schema"], "chatarchive.rollback");
+        assert_eq!(metadata["archiveId"], "second");
         let _ = fs::remove_dir_all(library);
     }
 }

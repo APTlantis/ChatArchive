@@ -1,7 +1,7 @@
 param(
   [string]$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
-  [string]$Version = '0.1.2',
-  [string]$PackageVersion = '0.1.2.0',
+  [string]$Version = '0.2.0',
+  [string]$PackageVersion = '1.0.3.0',
   [switch]$IncludeMsix
 )
 
@@ -43,7 +43,16 @@ $relativeFiles = @(
   'Project-Proposal.md',
   'Package.appxmanifest',
   'ChatArchive.manifest.toml',
-  'docs\Release-v0.1.2-Scope.md',
+  "docs\ChatArchive v$Version - Export Continuity.md",
+  'CHANGELOG.md',
+  'docs\ChatArchive - Release Checklist.md',
+  "docs\ChatArchive - Data Migration Contract v$Version.md",
+  'docs\ChatArchive - Trust and Security Model.md',
+  'docs\ChatArchive - Threat Model.md',
+  'docs\ChatArchive - Build Reproducibility Guide.md',
+  'docs\ChatArchive - Dependency Provenance.md',
+  'docs\ChatArchive - Withdrawn Release Policy.md',
+  'scripts\release\generate-sbom.ps1',
   'docs\Phase2-QA-Report.md',
   'docs\ChatArchive-User-Guide.md',
   'docs\Tauri-Store-MSIX-Release-Playbook.md',
@@ -63,6 +72,11 @@ $evidencePatterns = @(
   'src-tauri\target\store-msix\*.json'
 )
 
+$sbomPatterns = @(
+  'artifacts\sbom\*.json',
+  'artifacts\sbom\*.xml'
+)
+
 $files = New-Object System.Collections.Generic.List[string]
 foreach ($relative in $relativeFiles) {
   $full = Join-Path $projectRootPath $relative
@@ -70,7 +84,7 @@ foreach ($relative in $relativeFiles) {
     $files.Add($full)
   }
 }
-foreach ($pattern in ($trustPatterns + $evidencePatterns)) {
+foreach ($pattern in ($trustPatterns + $evidencePatterns + $sbomPatterns)) {
   Get-ChildItem -Path (Join-Path $projectRootPath $pattern) -File -ErrorAction SilentlyContinue | ForEach-Object {
     $files.Add($_.FullName)
   }

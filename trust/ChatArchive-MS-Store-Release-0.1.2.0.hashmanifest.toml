@@ -1,0 +1,20 @@
+# Release Hash Manifest
+
+[release]
+name = "ChatArchive - MS Store Release"
+version = "0.1.2.0"
+artifact = "ChatArchive Installer_0.1.2.0.exe"
+path = "D:\\DRS\\ChatArchive\\src-tauri\\target\\store-msix\\packages\\ChatArchive Installer_0.1.2.0.exe"
+size_bytes = 815136
+
+[[hash]]
+algorithm = "SHA256"
+value = "ce8276d12567a1b626a57bda651aaa0d3b84e443760102add41dc29f4fbe8f9c"
+
+[[hash]]
+algorithm = "BLAKE3-256"
+value = "3f191e0a66e48a9692c67e0334473b6d27de2cd77dd7a4918863a57e40dba464"
+
+[[hash]]
+algorithm = "KT128"
+value = "lOapGFEtq5lR22yLYrYA3Xr9ftjIquUmh8JbbMrlQlrU9UZSLlWr266LwtkRMg0SX7uxKKPW72YIuCEV01XLsp+AebURkejcxUAcy/l+juJIaKEyxTvBWtUqjFdnVFJ7P+EHPJyAbDnEkLhSJc7U4FJDysp+gGt8BGoN/KxdHc4="

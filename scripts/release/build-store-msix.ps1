@@ -36,6 +36,36 @@ function Xml-Attr {
   return [Security.SecurityElement]::Escape($Value)
 }
 
+function Copy-ReleaseDocuments {
+  param([string]$ProjectRoot, [string]$Stage)
+  $documents = @(
+    'README.md',
+    'CHANGELOG.md',
+    'docs\ChatArchive v0.2.0 - Export Continuity.md',
+    'docs\ChatArchive - Release Checklist.md',
+    'docs\ChatArchive - Data Migration Contract v0.2.0.md',
+    'docs\ChatArchive - Trust and Security Model.md',
+    'docs\ChatArchive - Threat Model.md',
+    'docs\ChatArchive - Build Reproducibility Guide.md',
+    'docs\ChatArchive - Dependency Provenance.md',
+    'docs\ChatArchive - Withdrawn Release Policy.md',
+    'artifacts\sbom\chatarchive-frontend.cdx.json',
+    'artifacts\sbom\chatarchive-rust.cdx.json'
+  )
+  $included = @()
+  foreach ($relative in $documents) {
+    $source = Join-Path $ProjectRoot $relative
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Required release document is missing: $relative" }
+    $payloadRoot = if ($relative.StartsWith('artifacts\')) { 'sbom' } else { 'docs' }
+    $relativeName = if ($relative.StartsWith('docs\')) { $relative.Replace('docs\', '') } elseif ($relative.StartsWith('artifacts\sbom\')) { $relative.Replace('artifacts\sbom\', '') } else { $relative }
+    $destination = Join-Path (Join-Path $Stage $payloadRoot) $relativeName
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+    Copy-Item -LiteralPath $source -Destination $destination -Force
+    $included += "$payloadRoot\$relativeName"
+  }
+  return $included
+}
+
 if (-not (Test-Path -LiteralPath $IdentityConfig)) {
   throw "Store identity config not found: $IdentityConfig. Copy scripts\release\store-identity.template.json to scripts\release\store-identity.json and fill it from Partner Center."
 }
@@ -91,6 +121,7 @@ try {
   $assetSource = Join-Path $root $identity.visualAssets.sourceDirectory
   if (-not (Test-Path -LiteralPath $assetSource)) { throw "Visual asset source directory not found: $assetSource" }
   Copy-Item -LiteralPath $assetSource -Destination (Join-Path $stage 'Assets') -Recurse -Force
+  $stagedDocuments = Copy-ReleaseDocuments -ProjectRoot $root -Stage $stage
 
   $manifestPath = Join-Path $stage 'AppxManifest.xml'
   $manifest = @"
@@ -173,6 +204,7 @@ try {
     appExecutable = $identity.app.executable
     processorArchitecture = $identity.package.processorArchitecture
     manifest = $manifestPath
+    stagedDocuments = $stagedDocuments
     note = 'Local self-signing is sideload evidence only. Store submission, Microsoft certification, and Microsoft re-signing remain separate release gates.'
   }
   $resultPath = Join-Path $OutputRoot 'store-msix-results.json'

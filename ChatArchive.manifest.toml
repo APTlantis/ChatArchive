@@ -3,7 +3,7 @@ schema = "APTlantis Entity Manifest"
 schema_version = "2.4"
 manifest_type = "project"
 canonical_name = "ChatArchive.manifest.toml"
-last_updated = "2026-08-24"
+last_updated = "2026-09-01"
 maintainer = "Herb"
 
 [entity]
@@ -16,10 +16,19 @@ description = "Tauri desktop application for importing, browsing, and managing O
 tags = []
 
 [project]
+id = "chatarchive"
+title = "ChatArchive"
 type = "desktop-application"
 portfolio_class = "project"
 stage = "active"
-version = "0.1.2"
+version = "0.2.0"
+
+[metadata]
+created = "2026-08-01"
+language_primary = "TypeScript and Rust"
+
+[runtime]
+platform = "Windows desktop (Tauri 2)"
 
 [governance]
 primary_standard = "DRS"
@@ -48,6 +57,13 @@ root = "D:\\DRS\\ChatArchive"
 project_proposal = "Project-Proposal.md"
 project_readme = "Project-README.md"
 readme = "README.md"
+release_notes = "docs\\ChatArchive v0.2.0 - Export Continuity.md"
+release_checklist = "docs\\ChatArchive - Release Checklist.md"
+data_migration_contract = "docs\\ChatArchive - Data Migration Contract v0.2.0.md"
+trust_security_model = "docs\\ChatArchive - Trust and Security Model.md"
+threat_model = "docs\\ChatArchive - Threat Model.md"
+build_reproducibility = "docs\\ChatArchive - Build Reproducibility Guide.md"
+dependency_provenance = "docs\\ChatArchive - Dependency Provenance.md"
 
 [relationships]
 parent = "D:\\DRS"
@@ -107,15 +123,35 @@ artifact_verified = false
 release_verified = true
 
 [release]
-version = "0.1.2"
-status = "store-available"
-date = "2026-08-26"
-summary = "Windows-first Microsoft Store release using a direct-executable MSIX package with aligned 0.1.2 product and 0.1.2.0 package versions."
-release_note = "docs\\Release-v0.1.2-Scope.md"
-release_claim = true
-known_blocker = "For future package changes, retain fresh Store submission, distributed-package, and archive-library preservation evidence. The existing local evidence does not independently verify the distributed package signature."
+name = "Export Continuity"
+version = "0.2.0"
+status = "draft"
+date = "2026-09-01"
+summary = "Candidate Windows-first Microsoft Store update for safe OpenAI export refresh and rollback."
+release_note = "docs\\ChatArchive v0.2.0 - Export Continuity.md"
+release_claim = false
+known_blocker = "The final 1.0.3.0 MSIX, SHA-256/ARHS record, signatures, WACK/lifecycle evidence, and Partner Center certification/publication are pending final-release work."
 
-[release.delivery]
+[release.installer]
+kind = "msix"
+path = "PENDING_FINAL_MSIX_Aptlantis.ChatArchive_1.0.3.0_x64.msix"
+runtime = "Windows 10/11 x64; Tauri 2"
+package_version = "1.0.3.0"
+sha256 = "PENDING_FINAL_ARTIFACT"
+signing = "Pending final release signing; developer signing, if used, is sideload-only."
+
+[release.verified]
+date = "2026-09-01"
+tests = "Candidate source tests are required; final artifact evidence is pending."
+installer_build = "Pending final MSIX build."
+
+[release.historical_v0_1_2]
+status = "published through Microsoft Store; historical evidence only"
+product_version = "0.1.2"
+scope_note = "docs\\Release-v0.1.2-Scope.md"
+notes = "Historical local MSIX, WACK, lifecycle, and Store records below are retained and do not certify v0.2.0."
+
+[release.historical_v0_1_2.delivery]
 version = "0.1.2"
 scope_note = "docs\\Release-v0.1.2-Scope.md"
 distribution = "Microsoft Store"
@@ -132,7 +168,7 @@ deferred_features = [
     "Project Intelligence",
 ]
 
-[release.verified]
+[release.historical_v0_1_2.verified]
 frontend_build = true
 unit_tests = true
 rust_tests = true
@@ -149,7 +185,7 @@ partner_center_submission = true
 microsoft_signed_package = false
 
 
-[release.evidence.store_msix_package]
+[release.historical_v0_1_2.evidence.store_msix_package]
 status = "pass"
 package = "src-tauri\\target\\store-msix\\packages\\Aptlantis.ChatArchive_0.1.2.0_x64.msix"
 sha256 = "543CCED660AB40D6071326BF4019D773B591E55D6778B383D69E29CCA2A35A3D"
@@ -164,7 +200,7 @@ local_only = true
 notes = "Historical pre-publication local 0.1.2.0 Store-shaped package rebuilt from the refreshed executable and master aqua Windows assets, then signed with the local development certificate for sideload validation. It is local evidence only; historical WACK/lifecycle evidence remains tied to the prior 1.0.2.0 package. The current public status is recorded separately by the Microsoft Store listing."
 
 
-[release.evidence.store_msix_install_launch]
+[release.historical_v0_1_2.evidence.store_msix_install_launch]
 status = "pass"
 package_full_name = "Aptlantis.ChatArchive_1.0.2.0_x64__jfrcsngvdwx7g"
 version = "1.0.2.0"
@@ -177,7 +213,7 @@ validated = "2026-08-23"
 local_only = true
 notes = "Signed final-name MSIX installed and launched locally for hands-on validation. This is not Microsoft Store signing, Partner Center certification, or a full install/update/uninstall data-preservation lifecycle audit."
 
-[release.evidence.store_msix_uninstall_reinstall]
+[release.historical_v0_1_2.evidence.store_msix_uninstall_reinstall]
 status = "pass"
 evidence = ".qa\\release-evidence\\store-msix-lifecycle-2026-08-23.json"
 package = "src-tauri\\target\\store-msix\\packages\\Aptlantis.ChatArchive_1.0.2.0_x64.msix"
@@ -197,7 +233,7 @@ external_library_preserved = true
 local_only = true
 notes = "Signed final-name MSIX was stopped, uninstalled with Remove-AppxPackage, confirmed absent, reinstalled with Add-AppxPackage, confirmed Status Ok, and launched from the AppsFolder URI. A:\\ChatArchive was not present on this workstation, so data-preservation evidence is limited to confirming the workspace/external path used for this release work remained present; no archive library deletion was performed."
 
-[release.evidence.store_msix_wack]
+[release.historical_v0_1_2.evidence.store_msix_wack]
 status = "pass"
 report = "trust\\ChatArchive WACK v1.0.2.0 Signed.xml"
 report_generated = "2026-08-23T06:10:49-04:00"
@@ -214,21 +250,21 @@ partial_run = false
 local_only = true
 notes = "Historical local WACK validation of the signed final-name Store-shaped MSIX package. Optional blocked-executable analyzer still reports references in chatarchive.exe, but the overall WACK result is PASS. It is local test evidence, not the current public-status record."
 
-[[release.artifacts]]
+[[release.historical_v0_1_2.artifacts]]
 name = "ChatArchive_0.1.1_x64_en-US.msi"
 path = "src-tauri\\target\\release\\bundle\\msi\\ChatArchive_0.1.1_x64_en-US.msi"
 kind = "msi"
 size = 7028736
 sha256 = "F53671C51A5DCDDA8F510B96352448A75EEEBD3972239754D7C559048839A3A0"
 
-[[release.artifacts]]
+[[release.historical_v0_1_2.artifacts]]
 name = "ChatArchive_0.1.1_x64-setup.exe"
 path = "src-tauri\\target\\release\\bundle\\nsis\\ChatArchive_0.1.1_x64-setup.exe"
 kind = "nsis"
 size = 5392174
 sha256 = "ACDE89CED4FD40324F4D8CB61552B710AC6E13EBB52CF28B2D039DA9A3C62F78"
 
-[[release.artifacts]]
+[[release.historical_v0_1_2.artifacts]]
 name = "chatarchive.exe"
 path = "src-tauri\\target\\release\\chatarchive.exe"
 kind = "exe"
