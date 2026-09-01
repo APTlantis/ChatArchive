@@ -75,6 +75,7 @@ import {
   saveViewerState,
   saveKnowledgeState,
   selectLibraryFolder,
+  restorePreviousImport,
   toggleFavorite,
   togglePin,
   type LibraryStatus,
@@ -108,7 +109,7 @@ const DEFAULT_FILTERS: SearchFilters = {
   minMessages: '',
   maxMessages: '',
 };
-type AppView = 'dashboard' | 'conversation' | 'code' | 'documents' | 'assets' | 'knowledge';
+type AppView = 'dashboard' | 'conversation' | 'code' | 'documents' | 'assets' | 'knowledge' | 'library';
 
 const DEFAULT_TAGS = ['WSL', 'Rust', 'Security', 'Docker', 'AI'];
 
@@ -916,6 +917,7 @@ function Sidebar({
   onDocumentExplorer,
   onAssetExplorer,
   onKnowledge,
+  onLibrary,
 }: {
   index: ArchiveIndex;
   conversations: ConversationSummary[];
@@ -933,6 +935,7 @@ function Sidebar({
   onDocumentExplorer: () => void;
   onAssetExplorer: () => void;
   onKnowledge: () => void;
+  onLibrary: () => void;
 }) {
   function updateFilter<K extends keyof SearchFilters>(key: K, value: SearchFilters[K]) {
     onFilters({ ...filters, [key]: value });
@@ -976,6 +979,10 @@ function Sidebar({
             <button className={activeView === 'knowledge' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onKnowledge}>
               <FolderKanban size={16} />
               Knowledge
+            </button>
+            <button className={activeView === 'library' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onLibrary}>
+              <FileArchive size={16} />
+              Library
             </button>
             <button className="toolbar-button" type="button" onClick={() => onFilters(DEFAULT_FILTERS)}>
               <RotateCcw size={16} />
@@ -1645,7 +1652,7 @@ function RightRail({
           return (
             <button className="bookmark-row" type="button" key={`${bookmark.conversationId}-${bookmark.messageId}`} onClick={() => onSelectBookmark(bookmark)}>
               <span>{bookmark.label}</span>
-              <small>{conversation?.title || 'Unknown conversation'}</small>
+              <small>{conversation?.title || 'Unavailable in current export'}</small>
             </button>
           );
         })}
@@ -1848,9 +1855,14 @@ function KnowledgeOrganizer({
   );
 }
 
-function KnowledgeView({ state, onOpen }: { state: KnowledgeState; onOpen: (target: KnowledgeTarget) => void }) {
+function KnowledgeView({ state, onOpen, index, artifacts }: { state: KnowledgeState; onOpen: (target: KnowledgeTarget) => void; index: ArchiveIndex; artifacts: ArtifactIndex | null }) {
   const targets = new Map<string, KnowledgeTarget>();
   [...state.favorites, ...state.notes, ...state.collectionItems, ...state.tagLinks].forEach((item) => targets.set(targetKey(item), item));
+  const isAvailable = (item: KnowledgeTarget) => {
+    if (item.targetType === 'conversation') return index.conversations.some((conversation) => conversation.id === item.targetId);
+    return (artifacts?.[item.targetType === 'code' ? 'code' : item.targetType === 'document' ? 'documents' : item.targetType === 'asset' ? 'assets' : 'links'] || []).some((artifact) => artifact.id === item.targetId);
+  };
+  const targetLabel = (item: KnowledgeTarget) => `${item.targetType}${isAvailable(item) ? '' : ' · unavailable'}`;
   return (
     <section className="explorer knowledge-view">
       <div className="explorer-heading"><div className="brand-mark large"><FolderKanban size={24} /></div><div><p>Knowledge organization</p><h2>Knowledge Base</h2></div></div>
@@ -1863,10 +1875,49 @@ function KnowledgeView({ state, onOpen }: { state: KnowledgeState; onOpen: (targ
       <div className="knowledge-columns">
         <section><h3><FolderKanban size={16} />Collections</h3>{state.collections.map((collection) => {
           const items = state.collectionItems.filter((item) => item.collectionId === collection.id);
-          return <div className="knowledge-group" key={collection.id}><strong>{collection.name}</strong><span>{items.length} items</span>{items.map((item) => <button type="button" key={targetKey(item)} onClick={() => onOpen(item)}>{item.title}<small>{item.targetType}</small></button>)}</div>;
+          return <div className="knowledge-group" key={collection.id}><strong>{collection.name}</strong><span>{items.length} items</span>{items.map((item) => <button type="button" key={targetKey(item)} onClick={() => onOpen(item)}>{item.title}<small>{targetLabel(item)}</small></button>)}</div>;
         })}{!state.collections.length ? <p className="empty-note">Create a collection from any conversation or artifact.</p> : null}</section>
-        <section><h3><Star size={16} />Favorites</h3>{state.favorites.map((item) => <button className="knowledge-item" type="button" key={targetKey(item)} onClick={() => onOpen(item)}><span>{item.title}</span><small>{item.targetType}</small></button>)}{!state.favorites.length ? <p className="empty-note">Star useful conversations and artifacts.</p> : null}</section>
-        <section><h3><NotebookPen size={16} />Recent notes</h3>{state.notes.map((note) => <button className="knowledge-item note" type="button" key={note.id} onClick={() => onOpen(note)}><span>{note.body}</span><small>{note.title}</small></button>)}{!state.notes.length ? <p className="empty-note">Attach implementation context where it belongs.</p> : null}</section>
+        <section><h3><Star size={16} />Favorites</h3>{state.favorites.map((item) => <button className="knowledge-item" type="button" key={targetKey(item)} onClick={() => onOpen(item)}><span>{item.title}</span><small>{targetLabel(item)}</small></button>)}{!state.favorites.length ? <p className="empty-note">Star useful conversations and artifacts.</p> : null}</section>
+        <section><h3><NotebookPen size={16} />Recent notes</h3>{state.notes.map((note) => <button className="knowledge-item note" type="button" key={note.id} onClick={() => onOpen(note)}><span>{note.body}</span><small>{note.title}{isAvailable(note) ? '' : ' · unavailable'}</small></button>)}{!state.notes.length ? <p className="empty-note">Attach implementation context where it belongs.</p> : null}</section>
+      </div>
+    </section>
+  );
+}
+
+function LibraryView({
+  status,
+  busy,
+  message,
+  onImport,
+  onRestore,
+}: {
+  status: LibraryStatus | null;
+  busy: boolean;
+  message: string;
+  onImport: () => void;
+  onRestore: () => void;
+}) {
+  const index = status?.index;
+  return (
+    <section className="explorer library-view">
+      <div className="explorer-heading"><div className="brand-mark large"><FileArchive size={24} /></div><div><p>Local archive storage</p><h2>Library</h2></div></div>
+      <div className="library-card">
+        <span>Library location</span>
+        <strong>{status?.libraryPath || 'No folder selected'}</strong>
+        <div className="knowledge-summary">
+          <Stat label="Conversations" value={(index?.totals.conversations || 0).toLocaleString()} />
+          <Stat label="Visible messages" value={(index?.totals.visibleMessages || 0).toLocaleString()} />
+          <Stat label="Copied assets" value={(index?.totals.copiedAssets || 0).toLocaleString()} />
+        </div>
+        <div className="setup-actions">
+          <button className="toolbar-button active" type="button" disabled={busy || !status?.configured} onClick={onImport}>
+            <Download size={16} />
+            {busy ? 'Importing…' : 'Import newer OpenAI export'}
+          </button>
+          {status?.hasRollback ? <button className="toolbar-button" type="button" disabled={busy} onClick={onRestore}>Restore previous import</button> : null}
+        </div>
+        <p className="setup-message">A new export refreshes the archive while retaining saved organization. Items no longer in the export stay saved as unavailable.</p>
+        {message ? <p className="setup-message" role="status">{message}</p> : null}
       </div>
     </section>
   );
@@ -1995,6 +2046,7 @@ export default function App() {
           libraryPath: null,
           libraryError: err instanceof Error ? err.message : String(err),
           hasArchive: false,
+          hasRollback: false,
           stateMigrated: false,
           index: null,
           artifacts: null,
@@ -2148,10 +2200,35 @@ export default function App() {
           setViewerState(status.viewerState);
           setKnowledgeState(status.knowledgeState.tags.length ? status.knowledgeState : createEmptyKnowledgeState());
         }
-        setLibraryMessage(`Imported ${result.index.totals.conversations.toLocaleString()} conversations.`);
+        setLibraryMessage(`Imported ${result.index.totals.conversations.toLocaleString()} conversations. Preserved ${result.reconciliation.preservedItems.toLocaleString()} saved items; ${result.reconciliation.unavailableItems.toLocaleString()} are unavailable in this export.`);
       } else {
         setLibraryMessage('');
       }
+    } catch (err) {
+      setLibraryMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLibraryBusy(false);
+    }
+  }
+
+  async function restoreImport() {
+    if (!window.confirm('Restore the previous import? Your current archive and saved library state will become the new rollback copy.')) return;
+    setLibraryBusy(true);
+    setLibraryMessage('Restoring previous import...');
+    try {
+      const result = await restorePreviousImport();
+      setIndex(result.index);
+      setArtifacts(result.artifacts);
+      const status = await getLibraryStatus();
+      if (status) {
+        setLibraryStatus(status);
+        setViewerState(status.viewerState);
+        setKnowledgeState(status.knowledgeState.tags.length ? status.knowledgeState : createEmptyKnowledgeState());
+      }
+      setSelected(null);
+      setConversation(null);
+      setActiveView('library');
+      setLibraryMessage(`Restored ${result.index.totals.conversations.toLocaleString()} conversations from the previous import.`);
     } catch (err) {
       setLibraryMessage(err instanceof Error ? err.message : String(err));
     } finally {
@@ -2323,7 +2400,7 @@ export default function App() {
   }
 
   return (
-    <div className={activeView === 'code' || activeView === 'documents' || activeView === 'assets' || activeView === 'knowledge' ? 'app-shell explorer-open' : 'app-shell'}>
+    <div className={activeView === 'code' || activeView === 'documents' || activeView === 'assets' || activeView === 'knowledge' || activeView === 'library' ? 'app-shell explorer-open' : 'app-shell'}>
       <Sidebar
         index={index}
         conversations={filtered.conversations}
@@ -2355,6 +2432,10 @@ export default function App() {
         onKnowledge={() => {
           setSelected(null);
           setActiveView('knowledge');
+        }}
+        onLibrary={() => {
+          setSelected(null);
+          setActiveView('library');
         }}
       />
       <main className="reader" ref={mainRef} onScroll={handleReaderScroll}>
@@ -2406,7 +2487,15 @@ export default function App() {
         ) : activeView === 'assets' ? (
           <AssetExplorer artifacts={assetArtifacts} onOpenSource={openArtifactSource} onOpenAsset={setLightboxAsset} onOrganize={setOrganizerTarget} />
         ) : activeView === 'knowledge' ? (
-          <KnowledgeView state={knowledgeState} onOpen={setOrganizerTarget} />
+          <KnowledgeView state={knowledgeState} onOpen={setOrganizerTarget} index={index} artifacts={artifacts} />
+        ) : activeView === 'library' ? (
+          <LibraryView
+            status={libraryStatus}
+            busy={libraryBusy}
+            message={libraryMessage}
+            onImport={() => void finishOpenAiImport(importOpenAiExport)}
+            onRestore={() => void restoreImport()}
+          />
         ) : (
           <Dashboard index={index} artifacts={artifacts} viewerState={viewerState} onSelect={openConversation} />
         )}

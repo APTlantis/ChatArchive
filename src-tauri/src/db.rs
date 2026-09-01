@@ -4,6 +4,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::collections::HashSet;
 use tauri::{AppHandle, Manager};
 
 pub type AppResult<T> = Result<T, String>;
@@ -1118,6 +1119,52 @@ pub fn active_archive_path(conn: &Connection) -> AppResult<Option<PathBuf>> {
     .optional()
     .map(|item| item.map(PathBuf::from))
     .map_err(|err| format!("Could not read active archive path: {err}"))
+}
+
+pub fn reconcile_metadata(
+    conn: &Connection,
+    conversations: &[ConversationFile],
+    artifacts: &ArtifactIndex,
+) -> AppResult<ImportReconciliation> {
+    let conversation_ids = conversations.iter().map(|item| item.summary.id.as_str()).collect::<HashSet<_>>();
+    let message_ids = conversations.iter().flat_map(|item| item.messages.iter().map(move |message| (item.summary.id.as_str(), message.id.as_str()))).collect::<HashSet<_>>();
+    let code_ids = artifacts.code.iter().map(|item| item.base.id.as_str()).collect::<HashSet<_>>();
+    let document_ids = artifacts.documents.iter().map(|item| item.base.id.as_str()).collect::<HashSet<_>>();
+    let asset_ids = artifacts.assets.iter().map(|item| item.base.id.as_str()).collect::<HashSet<_>>();
+    let link_ids = artifacts.links.iter().map(|item| item.base.id.as_str()).collect::<HashSet<_>>();
+    let mut result = ImportReconciliation::default();
+    let mut add = |available: bool| {
+        result.preserved_items += 1;
+        if !available { result.unavailable_items += 1; }
+    };
+
+    for table in ["favorite_conversations", "pinned_conversations", "read_conversations", "recently_viewed", "scroll_positions", "conversation_tags"] {
+        let mut stmt = conn.prepare(&format!("SELECT conversation_id FROM {table}")).map_err(|err| err.to_string())?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0)).map_err(|err| err.to_string())?;
+        for row in rows { add(conversation_ids.contains(row.map_err(|err| err.to_string())?.as_str())); }
+    }
+    {
+        let mut stmt = conn.prepare("SELECT conversation_id, message_id FROM message_bookmarks").map_err(|err| err.to_string())?;
+        let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))).map_err(|err| err.to_string())?;
+        for row in rows { let (conversation_id, message_id) = row.map_err(|err| err.to_string())?; add(message_ids.contains(&(conversation_id.as_str(), message_id.as_str()))); }
+    }
+    for table in ["knowledge_tag_links", "collection_items", "knowledge_notes", "knowledge_favorites", "project_memberships"] {
+        let mut stmt = conn.prepare(&format!("SELECT target_type, target_id, conversation_id FROM {table}")).map_err(|err| err.to_string())?;
+        let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))).map_err(|err| err.to_string())?;
+        for row in rows {
+            let (target_type, target_id, conversation_id) = row.map_err(|err| err.to_string())?;
+            let available = match target_type.as_str() {
+                "conversation" => conversation_ids.contains(target_id.as_str()),
+                "code" => code_ids.contains(target_id.as_str()),
+                "document" => document_ids.contains(target_id.as_str()),
+                "asset" => asset_ids.contains(target_id.as_str()),
+                "link" => link_ids.contains(target_id.as_str()),
+                _ => conversation_ids.contains(conversation_id.as_str()),
+            };
+            add(available);
+        }
+    }
+    Ok(result)
 }
 
 pub fn stored_conversation_summaries(conn: &Connection) -> AppResult<Vec<ConversationSummary>> {

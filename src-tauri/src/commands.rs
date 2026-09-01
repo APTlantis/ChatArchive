@@ -25,6 +25,40 @@ fn open_library_db(app: &AppHandle) -> AppResult<(PathBuf, rusqlite::Connection)
     Ok((library, conn))
 }
 
+const ROLLBACK_DIR: &str = "rollback";
+
+fn rollback_dir(library: &Path) -> PathBuf { library.join(ROLLBACK_DIR) }
+
+fn copy_directory(from: &Path, to: &Path) -> AppResult<()> {
+    for entry in WalkDir::new(from) {
+        let entry = entry.map_err(|err| format!("Could not read rollback files: {err}"))?;
+        let relative = entry.path().strip_prefix(from).map_err(|err| err.to_string())?;
+        let destination = to.join(relative);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&destination).map_err(|err| format!("Could not create rollback folder: {err}"))?;
+        } else {
+            if let Some(parent) = destination.parent() { fs::create_dir_all(parent).map_err(|err| err.to_string())?; }
+            fs::copy(entry.path(), &destination).map_err(|err| format!("Could not copy rollback file: {err}"))?;
+        }
+    }
+    Ok(())
+}
+
+fn create_rollback_snapshot(library: &Path, active_archive: &Path) -> AppResult<PathBuf> {
+    let staging = library.join(".rollback-staging");
+    if staging.exists() { fs::remove_dir_all(&staging).map_err(|err| format!("Could not clear rollback staging: {err}"))?; }
+    fs::create_dir_all(&staging).map_err(|err| format!("Could not create rollback staging: {err}"))?;
+    copy_directory(active_archive, &staging.join("archive"))?;
+    fs::copy(library.join("chatarchive.db"), staging.join("chatarchive.db")).map_err(|err| format!("Could not snapshot library database: {err}"))?;
+    Ok(staging)
+}
+
+fn promote_rollback_snapshot(library: &Path, staging: &Path) -> AppResult<()> {
+    let rollback = rollback_dir(library);
+    if rollback.exists() { fs::remove_dir_all(&rollback).map_err(|err| format!("Could not rotate prior rollback: {err}"))?; }
+    fs::rename(staging, &rollback).map_err(|err| format!("Could not save rollback snapshot: {err}"))
+}
+
 #[tauri::command]
 pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
     let library = db::saved_library_path(&app)?;
@@ -34,6 +68,7 @@ pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
             library_path: None,
             library_error: None,
             has_archive: false,
+            has_rollback: false,
             state_migrated: false,
             index: None,
             artifacts: None,
@@ -48,6 +83,7 @@ pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
             library_path: Some(library.to_string_lossy().to_string()),
             library_error: Some("The saved library folder is no longer available. Choose a library folder to continue.".to_string()),
             has_archive: false,
+            has_rollback: false,
             state_migrated: false,
             index: None,
             artifacts: None,
@@ -65,6 +101,7 @@ pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
                     .to_string(),
             ),
             has_archive: false,
+            has_rollback: false,
             state_migrated: false,
             index: None,
             artifacts: None,
@@ -80,6 +117,7 @@ pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
             library_path: Some(library.to_string_lossy().to_string()),
             library_error: Some(err),
             has_archive: false,
+            has_rollback: false,
             state_migrated: false,
             index: None,
             artifacts: None,
@@ -100,6 +138,7 @@ pub fn get_library_status(app: AppHandle) -> Result<LibraryStatus, String> {
         library_path: Some(library.to_string_lossy().to_string()),
         library_error: None,
         has_archive: index.is_some(),
+        has_rollback: rollback_dir(&library).join("chatarchive.db").is_file(),
         state_migrated,
         index,
         artifacts,
@@ -178,6 +217,14 @@ pub fn import_openai_export(
     let result = (|| {
         let build = importer.import(&prepared.source_dir, &library)?;
         let mut conn = db::open_db(&library)?;
+        let previous_archive = db::active_archive_path(&conn)?;
+        conn.execute_batch("PRAGMA wal_checkpoint(FULL);")
+            .map_err(|err| format!("Could not prepare library database for rollback: {err}"))?;
+        let rollback_staging = previous_archive
+            .as_deref()
+            .map(|archive| create_rollback_snapshot(&library, archive))
+            .transpose()?;
+        let reconciliation = db::reconcile_metadata(&conn, &build.conversations, &build.artifacts)?;
         db::replace_archive(
             &mut conn,
             &build.archive_id,
@@ -188,12 +235,23 @@ pub fn import_openai_export(
             &build.artifacts,
             &build.conversations,
         )?;
+        if let Some(staging) = rollback_staging {
+            if let Err(err) = promote_rollback_snapshot(&library, &staging) {
+                return Err(err);
+            }
+            if let Some(previous) = previous_archive {
+                if previous != build.archive_path && previous.exists() {
+                    fs::remove_dir_all(previous).map_err(|err| format!("Could not retire prior archive after snapshot: {err}"))?;
+                }
+            }
+        }
         Ok(ImportSummary {
             library_path: library.to_string_lossy().to_string(),
             archive_id: build.archive_id,
             manifest_path: build.manifest_path.to_string_lossy().to_string(),
             index: build.index,
             artifacts: build.artifacts,
+            reconciliation,
         })
     })();
     if let Some(temp_dir) = prepared.cleanup_dir {
@@ -205,6 +263,39 @@ pub fn import_openai_export(
         }
     }
     result
+}
+
+#[tauri::command]
+pub fn restore_previous_import(app: AppHandle) -> Result<ImportSummary, String> {
+    let library = library_or_error(&app)?;
+    let rollback = rollback_dir(&library);
+    let snapshot_db = rollback.join("chatarchive.db");
+    let snapshot_archive = rollback.join("archive");
+    if !snapshot_db.is_file() || !snapshot_archive.is_dir() {
+        return Err("There is no previous import available to restore.".to_string());
+    }
+    let live_conn = db::open_db(&library)?;
+    let current_archive = db::active_archive_path(&live_conn)?.ok_or("No current archive is available to snapshot")?;
+    drop(live_conn);
+    let staging = create_rollback_snapshot(&library, &current_archive)?;
+    let snapshot_conn = rusqlite::Connection::open(&snapshot_db).map_err(|err| format!("Could not read rollback database: {err}"))?;
+    let restored_archive = db::active_archive_path(&snapshot_conn)?.ok_or("Rollback database has no active archive")?;
+    let index = db::load_index(&snapshot_conn)?.ok_or("Rollback database has no archive index")?;
+    let artifacts = db::load_artifacts(&snapshot_conn)?.ok_or("Rollback database has no artifact index")?;
+    drop(snapshot_conn);
+    if restored_archive.exists() { fs::remove_dir_all(&restored_archive).map_err(|err| format!("Could not clear archive being restored: {err}"))?; }
+    copy_directory(&snapshot_archive, &restored_archive)?;
+    fs::copy(&snapshot_db, library.join("chatarchive.db")).map_err(|err| format!("Could not restore library database: {err}"))?;
+    if current_archive.exists() { fs::remove_dir_all(&current_archive).map_err(|err| format!("Could not retire replaced archive: {err}"))?; }
+    promote_rollback_snapshot(&library, &staging)?;
+    Ok(ImportSummary {
+        library_path: library.to_string_lossy().to_string(),
+        archive_id: restored_archive.file_name().and_then(|name| name.to_str()).unwrap_or("restored").to_string(),
+        manifest_path: restored_archive.join("manifest.json").to_string_lossy().to_string(),
+        index,
+        artifacts,
+        reconciliation: ImportReconciliation::default(),
+    })
 }
 
 struct PreparedOpenAiSource {
@@ -672,4 +763,40 @@ pub fn export_conversation_markdown(
     ));
     fs::write(&file, markdown).map_err(|err| format!("Could not write Markdown export: {err}"))?;
     Ok(file.to_string_lossy().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temporary_library(label: &str) -> PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("chatarchive-rollback-{label}-{nonce}"))
+    }
+
+    #[test]
+    fn rollback_snapshot_keeps_only_the_latest_prior_archive_and_database() {
+        let library = temporary_library("rotation");
+        db::ensure_library_layout(&library).unwrap();
+        let first = library.join("archives").join("first");
+        fs::create_dir_all(&first).unwrap();
+        fs::write(first.join("marker.txt"), "first").unwrap();
+        fs::write(library.join("chatarchive.db"), "database-first").unwrap();
+        let first_staging = create_rollback_snapshot(&library, &first).unwrap();
+        promote_rollback_snapshot(&library, &first_staging).unwrap();
+
+        let second = library.join("archives").join("second");
+        fs::create_dir_all(&second).unwrap();
+        fs::write(second.join("marker.txt"), "second").unwrap();
+        fs::write(library.join("chatarchive.db"), "database-second").unwrap();
+        let second_staging = create_rollback_snapshot(&library, &second).unwrap();
+        promote_rollback_snapshot(&library, &second_staging).unwrap();
+
+        assert_eq!(fs::read_to_string(rollback_dir(&library).join("archive").join("marker.txt")).unwrap(), "second");
+        assert_eq!(fs::read_to_string(rollback_dir(&library).join("chatarchive.db")).unwrap(), "database-second");
+        let _ = fs::remove_dir_all(library);
+    }
 }

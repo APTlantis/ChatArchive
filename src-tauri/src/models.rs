@@ -395,6 +395,7 @@ pub struct LibraryStatus {
     pub library_path: Option<String>,
     pub library_error: Option<String>,
     pub has_archive: bool,
+    pub has_rollback: bool,
     pub state_migrated: bool,
     pub index: Option<ArchiveIndex>,
     pub artifacts: Option<ArtifactIndex>,
@@ -411,6 +412,14 @@ pub struct ImportSummary {
     pub manifest_path: String,
     pub index: ArchiveIndex,
     pub artifacts: ArtifactIndex,
+    pub reconciliation: ImportReconciliation,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportReconciliation {
+    pub preserved_items: usize,
+    pub unavailable_items: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

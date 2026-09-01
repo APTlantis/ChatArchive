@@ -22,6 +22,7 @@ export interface LibraryStatus {
   libraryPath: string | null;
   libraryError: string | null;
   hasArchive: boolean;
+  hasRollback: boolean;
   stateMigrated: boolean;
   index: ArchiveIndex | null;
   artifacts: ArtifactIndex | null;
@@ -36,6 +37,10 @@ export interface ImportSummary {
   manifestPath: string;
   index: ArchiveIndex;
   artifacts: ArtifactIndex;
+  reconciliation: {
+    preservedItems: number;
+    unavailableItems: number;
+  };
 }
 
 export function isTauriRuntime() {
@@ -76,6 +81,11 @@ export async function importOpenAiExportFolder(libraryPath?: string | null) {
   const selected = await open({ directory: true, multiple: false, title: 'Choose extracted OpenAI export folder' });
   if (!selected || Array.isArray(selected)) return null;
   return invoke<ImportSummary>('import_openai_export', { sourcePath: selected, libraryPath: libraryPath || null });
+}
+
+export async function restorePreviousImport() {
+  if (!isTauriRuntime()) throw new Error('Restore is only available in the Tauri desktop app.');
+  return invoke<ImportSummary>('restore_previous_import');
 }
 
 export async function loadArchiveIndex(): Promise<ArchiveIndex> {

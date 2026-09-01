@@ -10,6 +10,14 @@ This guide covers the v0.1.2 document workflow: finding recovered files, exporti
 
 ChatArchive stores its library outside the installed app package. Keep that folder in a location you can back up directly.
 
+## Update Your ChatGPT Export
+
+1. Open **Library** in the sidebar.
+2. Select **Import newer OpenAI export** and choose the new ChatGPT data-export ZIP.
+3. ChatArchive rebuilds the archive from that export while keeping your saved tags, collections, notes, favorites, pins, bookmarks, and project records.
+
+If an item is not present in the newest export, its saved organization stays in the library and is marked **unavailable**. It becomes available again if a later export contains it. After a successful update, **Restore previous import** returns the archive and saved library state to the immediately preceding import; the current state becomes the next rollback copy.
+
 ## Find Documents
 
 1. Select **Documents** in the top toolbar.

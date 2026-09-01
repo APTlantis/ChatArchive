@@ -1691,6 +1691,34 @@ pre::-webkit-scrollbar-thumb:hover {
   color: var(--soft);
 }
 
+.library-view {
+  max-width: 920px;
+}
+
+.library-card {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.library-card > span {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.library-card > strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.library-card .setup-actions {
+  justify-content: flex-start;
+}
+
 .lightbox {
   position: fixed;
   inset: 0;

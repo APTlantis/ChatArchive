@@ -13,6 +13,7 @@ fn main() {
             commands::get_library_status,
             commands::select_library_folder,
             commands::import_openai_export,
+            commands::restore_previous_import,
             commands::list_conversations,
             commands::get_conversation,
             commands::get_artifact_index,
