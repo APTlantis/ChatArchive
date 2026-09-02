@@ -380,3 +380,5 @@ The React UI supports two data paths. In the desktop app it uses Tauri commands 
 
 Phase 1, Phase 2A-2C, Knowledge Organization, and the v0.2.0 Project Intelligence candidate surface are implemented. ChatArchive is available through the Microsoft Store as a durable local OpenAI archive with SQLite-backed viewer state, sharded-export ingestion, `.dat` attachment recovery, rich conversation search, code and diagram rendering, dedicated Code, Document, and Asset explorers, manual tags, collections, notes, favorites, and local operator-confirmed project candidates. Phase 2D Link Explorer polish, deeper project timelines/dashboards, provider adapters, privacy/redaction, and deeper retrieval remain future work.
 
+#   W a y f i n d e r  
+ 
