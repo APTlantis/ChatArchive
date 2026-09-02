@@ -79,7 +79,10 @@ import {
   selectLibraryFolder,
   restorePreviousImport,
   scanProjects,
-  saveProjectState,
+  confirmProjectCandidate,
+  dismissProjectCandidate,
+  addProjectConversation,
+  removeProjectConversation,
   toggleFavorite,
   togglePin,
   type LibraryStatus,
@@ -1900,15 +1903,27 @@ function ProjectIntelligenceView({
   onScan,
   onConfirm,
   onDismiss,
+  onAdd,
+  onRemove,
   onOpenConversation,
+  index,
 }: {
   state: ProjectState;
   busy: boolean;
   onScan: () => void;
-  onConfirm: (candidate: ProjectCandidate) => void;
-  onDismiss: (candidate: ProjectCandidate) => void;
+  onConfirm: (candidateId: string) => void;
+  onDismiss: (candidateId: string) => void;
+  onAdd: (projectId: number, conversationId: string) => void;
+  onRemove: (projectId: number, conversationId: string) => void;
   onOpenConversation: (conversationId: string) => void;
+  index: ArchiveIndex;
 }) {
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [memberQuery, setMemberQuery] = useState('');
+  const selectedProject = state.projects.find((project) => project.id === selectedProjectId) || null;
+  const members = selectedProject ? state.memberships.filter((membership) => membership.projectId === selectedProject.id).filter((membership) => membership.title.toLowerCase().includes(memberQuery.toLowerCase())).sort((a, b) => (index.conversations.find((item) => item.id === b.conversationId)?.updateTime || 0) - (index.conversations.find((item) => item.id === a.conversationId)?.updateTime || 0)) : [];
+  const memberIds = new Set(selectedProject ? state.memberships.filter((membership) => membership.projectId === selectedProject.id).map((membership) => membership.conversationId) : []);
+  const addable = selectedProject ? index.conversations.filter((conversation) => !memberIds.has(conversation.id) && conversation.title.toLowerCase().includes(memberQuery.toLowerCase())).slice(0, 30) : [];
   return (
     <section className="explorer knowledge-view">
       <div className="explorer-heading"><div className="brand-mark large"><BarChart3 size={24} /></div><div><p>Deterministic local signals, confirmed by you</p><h2>Project Intelligence</h2></div></div>
@@ -1918,11 +1933,8 @@ function ProjectIntelligenceView({
         <Stat label="Last scan" value={state.scanRuns[0] ? new Date(state.scanRuns[0].scannedAt).toLocaleDateString() : 'Not run'} />
       </div>
       <div className="setup-actions"><button className="toolbar-button active" type="button" disabled={busy} onClick={onScan}><Search size={16} />{busy ? 'Scanning…' : 'Scan archive for projects'}</button></div>
-      <p className="setup-message">Candidates are based on repeated titles, manual tags and collections, and artifact names across multiple conversations and months. ChatArchive never creates a project until you confirm it.</p>
-      <div className="knowledge-columns">
-        <section><h3><BarChart3 size={16} />Candidates</h3>{state.candidates.map((candidate) => <div className="knowledge-group" key={candidate.id}><strong>{candidate.name}</strong><span>{candidate.conversationIds.length} conversations · {candidate.monthCount} months</span><small>{candidate.evidence.slice(0, 3).map((evidence) => evidence.evidenceType).join(', ')}</small><div className="setup-actions"><button className="toolbar-button active" type="button" disabled={busy} onClick={() => onConfirm(candidate)}>Confirm project</button><button className="toolbar-button" type="button" disabled={busy} onClick={() => onDismiss(candidate)}>Dismiss</button></div></div>)}{!state.candidates.length ? <p className="empty-note">Run a scan to find repeat project signals.</p> : null}</section>
-        <section><h3><FolderKanban size={16} />Confirmed projects</h3>{state.projects.map((project) => { const memberships = state.memberships.filter((membership) => membership.projectId === project.id); return <div className="knowledge-group" key={project.id}><strong>{project.name}</strong><span>{memberships.length} conversations</span>{memberships.slice(0, 8).map((membership) => <button type="button" key={`${project.id}-${membership.targetId}`} onClick={() => onOpenConversation(membership.conversationId)}>{membership.title}</button>)}</div>; })}{!state.projects.length ? <p className="empty-note">Confirm a candidate to create a project workspace.</p> : null}</section>
-      </div>
+      <p className="setup-message">Candidates use repeated meaningful conversation titles plus your tags and collections. Code, attachments, numeric fragments, and boilerplate are excluded. ChatArchive never creates a project until you confirm it.</p>
+      {selectedProject ? <section className="knowledge-columns"><section><h3><ArrowLeft size={16} />{selectedProject.name}</h3><button className="toolbar-button" type="button" onClick={() => { setSelectedProjectId(null); setMemberQuery(''); }}>All projects</button><label className="search-box"><Search size={16} /><input value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} placeholder="Search project or archive" /></label><h3>Project conversations</h3>{members.map((membership) => <div className="knowledge-group" key={`${membership.projectId}-${membership.targetId}`}><button type="button" onClick={() => onOpenConversation(membership.conversationId)}>{membership.title}</button><div className="setup-actions"><button className="toolbar-button" type="button" disabled={busy} onClick={() => onRemove(selectedProject.id, membership.conversationId)}>Remove</button></div></div>)}{!members.length ? <p className="empty-note">No project conversations match this search.</p> : null}</section><section><h3><Search size={16} />Add conversations</h3><p className="empty-note">Search the archive above, then add a conversation to this project.</p>{addable.map((conversation) => <div className="knowledge-group" key={conversation.id}><strong>{conversation.title}</strong><div className="setup-actions"><button className="toolbar-button active" type="button" disabled={busy} onClick={() => onAdd(selectedProject.id, conversation.id)}>Add to project</button></div></div>)}</section></section> : <div className="knowledge-columns"><section><h3><BarChart3 size={16} />Candidates</h3>{state.candidates.map((candidate) => <div className="knowledge-group" key={candidate.id}><strong>{candidate.name}</strong><span>{candidate.conversationIds.length} conversations · {candidate.monthCount} months</span><small>{candidate.evidence.map((evidence) => `${evidence.evidenceType}: ${evidence.label}`).slice(0, 3).join(' · ')}</small><div className="setup-actions"><button className="toolbar-button active" type="button" disabled={busy} onClick={() => onConfirm(candidate.id)}>Confirm project</button><button className="toolbar-button" type="button" disabled={busy} onClick={() => onDismiss(candidate.id)}>Dismiss</button></div></div>)}{!state.candidates.length ? <p className="empty-note">Run a scan to find up to 50 high-signal candidates.</p> : null}</section><section><h3><FolderKanban size={16} />Confirmed projects</h3>{state.projects.map((project) => { const memberships = state.memberships.filter((membership) => membership.projectId === project.id); return <div className="knowledge-group" key={project.id}><button type="button" onClick={() => setSelectedProjectId(project.id)}><strong>{project.name}</strong><small>{memberships.length} conversations · updated {new Date(project.updatedAt).toLocaleDateString()}</small></button></div>; })}{!state.projects.length ? <p className="empty-note">Confirm a candidate to create a project workspace.</p> : null}</section></div>}
     </section>
   );
 }
@@ -2232,11 +2244,6 @@ export default function App() {
     }
   }
 
-  function applyProjectState(next: ProjectState) {
-    setProjectState(next);
-    saveProjectState(next).then(setProjectState).catch((err) => setLibraryMessage(err instanceof Error ? err.message : String(err)));
-  }
-
   async function scanProjectCandidates() {
     setProjectBusy(true);
     try {
@@ -2249,18 +2256,16 @@ export default function App() {
     }
   }
 
-  function confirmProject(candidate: ProjectCandidate) {
-    const now = Date.now();
-    const projectId = Math.max(0, ...projectState.projects.map((project) => project.id)) + 1;
-    const conversations = candidate.conversationIds.map((conversationId) => {
-      const conversation = index?.conversations.find((item) => item.id === conversationId);
-      return { projectId, targetType: 'conversation' as const, targetId: conversationId, conversationId, title: conversation?.title || conversationId, source: 'detected' as const, createdAt: now };
-    });
-    applyProjectState({ ...projectState, candidates: projectState.candidates.filter((item) => item.id !== candidate.id), projects: [...projectState.projects, { id: projectId, name: candidate.name, normalizedName: candidate.normalizedName, createdAt: now, updatedAt: now }], memberships: [...projectState.memberships, ...conversations] });
-  }
-
-  function dismissProject(candidate: ProjectCandidate) {
-    applyProjectState({ ...projectState, candidates: projectState.candidates.filter((item) => item.id !== candidate.id), dismissedCandidates: [...new Set([...projectState.dismissedCandidates, candidate.normalizedName])] });
+  async function mutateProject(action: () => Promise<ProjectState | null>) {
+    setProjectBusy(true);
+    try {
+      const next = await action();
+      if (next) setProjectState(next);
+    } catch (err) {
+      setLibraryMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setProjectBusy(false);
+    }
   }
 
   async function finishOpenAiImport(importer: (libraryPath?: string | null) => Promise<Awaited<ReturnType<typeof importOpenAiExport>>>) {
@@ -2572,7 +2577,7 @@ export default function App() {
         ) : activeView === 'knowledge' ? (
           <KnowledgeView state={knowledgeState} onOpen={setOrganizerTarget} index={index} artifacts={artifacts} />
         ) : activeView === 'projects' ? (
-          <ProjectIntelligenceView state={projectState} busy={projectBusy} onScan={() => void scanProjectCandidates()} onConfirm={confirmProject} onDismiss={dismissProject} onOpenConversation={(conversationId) => {
+          <ProjectIntelligenceView state={projectState} index={index} busy={projectBusy} onScan={() => void scanProjectCandidates()} onConfirm={(candidateId) => void mutateProject(() => confirmProjectCandidate(candidateId))} onDismiss={(candidateId) => void mutateProject(() => dismissProjectCandidate(candidateId))} onAdd={(projectId, conversationId) => void mutateProject(() => addProjectConversation(projectId, conversationId))} onRemove={(projectId, conversationId) => void mutateProject(() => removeProjectConversation(projectId, conversationId))} onOpenConversation={(conversationId) => {
             const target = index.conversations.find((item) => item.id === conversationId);
             if (target) openConversation(target);
           }} />

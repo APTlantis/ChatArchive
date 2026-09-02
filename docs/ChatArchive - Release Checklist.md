@@ -7,6 +7,7 @@ This permanent checklist is completed with dated evidence for every release. A c
 - [ ] Clean-clone build with locked Node and Rust dependencies.
 - [ ] Frontend build, unit tests, Rust tests, and relevant desktop/UI smoke pass.
 - [ ] Existing-library refresh, unavailable-target, rollback rotation, and exact-restore smoke pass.
+- [ ] Project Intelligence smoke: scan the high-signal shortlist, confirm/dismiss candidates, inspect every project member, and add/remove a conversation without affecting another project.
 - [ ] Package payload includes the required current DRS documents and SBOMs.
 - [ ] SBOM review identifies no unexpected components or unresolved license concerns.
 - [ ] Final MSIX is built from the approved identity, hashed, and recorded in the ARHS manifest.

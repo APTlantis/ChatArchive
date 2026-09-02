@@ -195,29 +195,39 @@ pub fn scan_projects(app: AppHandle) -> Result<ProjectState, String> {
     let index = db::load_index(&conn)?.ok_or("No archive has been imported yet")?;
     let artifacts = db::load_artifacts(&conn)?.ok_or("No artifact index is available")?;
     let knowledge = db::load_knowledge_state(&conn)?;
-    let mut state = db::load_project_state(&conn)?;
-    state.candidates =
-        crate::project_intelligence::scan_projects(&index, &artifacts, &knowledge, &state);
-    let next_id = state.scan_runs.iter().map(|run| run.id).max().unwrap_or(0) + 1;
-    state.scan_runs.insert(
-        0,
-        ProjectScanRun {
-            id: next_id,
-            scanned_at: db::now_ms(),
-            candidate_count: state.candidates.len(),
-        },
-    );
-    state.scan_runs.truncate(20);
-    db::save_project_state(&mut conn, &state)
+    let state = db::load_project_state(&conn)?;
+    let candidates = crate::project_intelligence::scan_projects(&index, &artifacts, &knowledge, &state);
+    db::save_project_scan(&mut conn, &candidates)
 }
 
 #[tauri::command]
-pub fn update_project_state(
+pub fn confirm_project_candidate(
     app: AppHandle,
-    project_state: ProjectState,
+    candidate_id: String,
 ) -> Result<ProjectState, String> {
     let (_, mut conn) = open_library_db(&app)?;
-    db::save_project_state(&mut conn, &project_state)
+    let index = db::load_index(&conn)?.ok_or("No archive has been imported yet")?;
+    db::confirm_project_candidate(&mut conn, &candidate_id, &index)
+}
+
+#[tauri::command]
+pub fn dismiss_project_candidate(app: AppHandle, candidate_id: String) -> Result<ProjectState, String> {
+    let (_, mut conn) = open_library_db(&app)?;
+    db::dismiss_project_candidate(&mut conn, &candidate_id)
+}
+
+#[tauri::command]
+pub fn add_project_conversation(app: AppHandle, project_id: i64, conversation_id: String) -> Result<ProjectState, String> {
+    let (_, mut conn) = open_library_db(&app)?;
+    let index = db::load_index(&conn)?.ok_or("No archive has been imported yet")?;
+    let conversation = index.conversations.iter().find(|item| item.id == conversation_id).ok_or("Conversation was not found in the active archive")?;
+    db::add_project_conversation(&mut conn, project_id, conversation)
+}
+
+#[tauri::command]
+pub fn remove_project_conversation(app: AppHandle, project_id: i64, conversation_id: String) -> Result<ProjectState, String> {
+    let (_, mut conn) = open_library_db(&app)?;
+    db::remove_project_conversation(&mut conn, project_id, &conversation_id)
 }
 
 #[tauri::command]

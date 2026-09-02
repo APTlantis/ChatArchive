@@ -10,7 +10,7 @@ One immediately previous archive/database snapshot is retained for Restore previ
 
 ## Project Intelligence
 
-Project Intelligence is part of this candidate. It scans only local archive facts—repeated conversation titles, operator-created tags and collections, and artifact names—across multiple conversations and months. It presents candidates with evidence for operator confirmation or dismissal. Confirmed projects and their conversation memberships are saved locally and survive an export refresh when stable conversation identifiers remain available. It does not use a remote model, infer project meaning as fact, or create projects without operator confirmation.
+Project Intelligence is part of this candidate. It scans only local archive facts—repeated meaningful conversation titles plus operator-created tags and collections—across multiple conversations and months. Code, attachments, numeric fragments, and boilerplate do not create candidates; scans return at most 50 ranked candidates. It presents evidence for operator confirmation or dismissal. Confirmed projects have their own workspace, where every member conversation is visible and operators can add or remove conversations. Confirmed projects and their memberships are saved locally and survive an export refresh when stable conversation identifiers remain available. It does not use a remote model, infer project meaning as fact, or create projects without operator confirmation.
 
 ## Design boundaries
 

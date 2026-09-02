@@ -172,9 +172,24 @@ export async function scanProjects() {
   return invoke<ProjectState>('scan_projects');
 }
 
-export async function saveProjectState(projectState: ProjectState) {
-  if (!isTauriRuntime()) return projectState;
-  return invoke<ProjectState>('update_project_state', { projectState });
+export async function confirmProjectCandidate(candidateId: string) {
+  if (!isTauriRuntime()) return null;
+  return invoke<ProjectState>('confirm_project_candidate', { candidateId });
+}
+
+export async function dismissProjectCandidate(candidateId: string) {
+  if (!isTauriRuntime()) return null;
+  return invoke<ProjectState>('dismiss_project_candidate', { candidateId });
+}
+
+export async function addProjectConversation(projectId: number, conversationId: string) {
+  if (!isTauriRuntime()) return null;
+  return invoke<ProjectState>('add_project_conversation', { projectId, conversationId });
+}
+
+export async function removeProjectConversation(projectId: number, conversationId: string) {
+  if (!isTauriRuntime()) return null;
+  return invoke<ProjectState>('remove_project_conversation', { projectId, conversationId });
 }
 
 export async function toggleFavorite(conversationId: string) {

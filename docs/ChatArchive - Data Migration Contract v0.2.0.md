@@ -16,6 +16,8 @@ Existing libraries remain in place. Updating the application does not automatica
 
 Stable OpenAI conversation, message, and artifact identifiers retain user-authored state. Missing targets are preserved as unavailable rather than deleted. A later refresh restores availability when the stable target reappears. Export titles and content remain export-authored; notes and relationships remain operator-authored.
 
+Project records and conversation memberships are also user-authored state. Project scans replace only the disposable candidate shortlist; confirmed projects, dismissals, and manual/detected memberships remain intact. Membership changes are targeted to one project and never rewrite the archive or unrelated project records.
+
 ## Failure, downgrade, and operator guidance
 
 If refresh reports an error, use the existing library rather than manually deleting its database or archive. Do not copy a database from a different library into an archive folder. Restore the prior import from Library when the immediately prior archive is needed. For broader retention, back up the complete library folder while ChatArchive is closed. Downgrading to an older app version is unsupported unless that version has been tested with the current SQLite schema; preserve a full backup first.

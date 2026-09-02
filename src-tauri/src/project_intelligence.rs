@@ -28,7 +28,24 @@ const STOP_WORDS: &[&str] = &[
     "this",
     "using",
     "with",
+    "and",
+    "for",
+    "the",
+    "your",
+    "setup",
+    "guide",
+    "error",
+    "issue",
+    "update",
+    "request",
+    "file",
+    "files",
+    "data",
+    "code",
+    "test",
+    "testing",
 ];
+const MAX_CANDIDATES: usize = 50;
 
 pub fn normalize_name(value: &str) -> String {
     value
@@ -46,10 +63,15 @@ pub fn normalize_name(value: &str) -> String {
         .join(" ")
 }
 
-fn tokens(value: &str) -> Vec<String> {
+fn title_terms(value: &str) -> Vec<String> {
     normalize_name(value)
         .split_whitespace()
-        .filter(|word| word.len() >= 3 && !STOP_WORDS.contains(word))
+        .filter(|word| {
+            word.len() >= 3
+                && word.len() <= 32
+                && word.chars().all(|ch| ch.is_ascii_alphabetic())
+                && !STOP_WORDS.contains(word)
+        })
         .map(ToString::to_string)
         .collect()
 }
@@ -63,7 +85,11 @@ fn add_seed(
     weight: f64,
 ) {
     let normalized = normalize_name(name);
-    if normalized.len() < 3 || STOP_WORDS.contains(&normalized.as_str()) {
+    if normalized.len() < 3
+        || normalized.len() > 80
+        || normalized.split_whitespace().all(|word| STOP_WORDS.contains(&word))
+        || !normalized.chars().any(|ch| ch.is_ascii_alphabetic())
+    {
         return;
     }
     let seed = seeds.entry(normalized).or_default();
@@ -78,27 +104,27 @@ fn add_seed(
     evidence.1 += 1;
 }
 
-fn add_token_evidence(
+fn add_title_evidence(
     seeds: &mut HashMap<String, Seed>,
     text: &str,
     conversation_id: &str,
     evidence_type: &str,
     weight: f64,
 ) {
-    for token in tokens(text) {
+    for token in title_terms(text) {
         add_seed(seeds, &token, conversation_id, evidence_type, text, weight);
     }
 }
 
 pub fn scan_projects(
     index: &ArchiveIndex,
-    artifacts: &ArtifactIndex,
+    _artifacts: &ArtifactIndex,
     knowledge: &KnowledgeState,
     current: &ProjectState,
 ) -> Vec<ProjectCandidate> {
     let mut seeds = HashMap::new();
     for conversation in &index.conversations {
-        add_token_evidence(
+        add_title_evidence(
             &mut seeds,
             &conversation.title,
             &conversation.id,
@@ -138,34 +164,6 @@ pub fn scan_projects(
             );
         }
     }
-    for item in &artifacts.documents {
-        add_token_evidence(
-            &mut seeds,
-            &item.title,
-            &item.base.conversation_id,
-            "file",
-            3.0,
-        );
-    }
-    for item in &artifacts.assets {
-        add_token_evidence(
-            &mut seeds,
-            &format!("{} {}", item.label, item.original),
-            &item.base.conversation_id,
-            "file",
-            3.0,
-        );
-    }
-    for item in &artifacts.code {
-        add_token_evidence(
-            &mut seeds,
-            &item.base.search_text,
-            &item.base.conversation_id,
-            "artifact",
-            1.0,
-        );
-    }
-
     let conversation_map = index
         .conversations
         .iter()
@@ -241,6 +239,7 @@ pub fn scan_projects(
             .total_cmp(&a.score)
             .then_with(|| a.name.cmp(&b.name))
     });
+    candidates.truncate(MAX_CANDIDATES);
     candidates
 }
 
@@ -313,5 +312,26 @@ mod tests {
         )
         .iter()
         .any(|item| item.normalized_name == "aegis"));
+    }
+
+    #[test]
+    fn rejects_numeric_and_boilerplate_title_candidates() {
+        let mut index = fixture_index();
+        for conversation in &mut index.conversations {
+            conversation.title = format!("000 setup guide {}", conversation.id);
+        }
+        let candidates = scan_projects(&index, &empty_artifacts(), &KnowledgeState::default(), &ProjectState::default());
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn limits_the_shortlist_to_fifty_candidates() {
+        let mut index = fixture_index();
+        let terms = (0..60)
+            .map(|value| format!("project{}{}", (b'a' + (value / 26) as u8) as char, (b'a' + (value % 26) as u8) as char))
+            .collect::<Vec<_>>()
+            .join(" ");
+        for conversation in &mut index.conversations { conversation.title = terms.clone(); }
+        assert_eq!(scan_projects(&index, &empty_artifacts(), &KnowledgeState::default(), &ProjectState::default()).len(), MAX_CANDIDATES);
     }
 }

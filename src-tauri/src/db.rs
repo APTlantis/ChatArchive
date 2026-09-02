@@ -1110,6 +1110,61 @@ pub fn save_project_state(conn: &mut Connection, state: &ProjectState) -> AppRes
     load_project_state(conn)
 }
 
+pub fn save_project_scan(conn: &mut Connection, candidates: &[ProjectCandidate]) -> AppResult<ProjectState> {
+    let tx = conn.transaction().map_err(|err| err.to_string())?;
+    tx.execute("INSERT INTO project_scan_runs(scanned_at, candidate_count) VALUES (?1, ?2)", params![now_ms(), candidates.len() as i64]).map_err(|err| err.to_string())?;
+    let scan_run_id = tx.last_insert_rowid();
+    tx.execute("DELETE FROM project_candidates", []).map_err(|err| err.to_string())?;
+    for candidate in candidates {
+        tx.execute("INSERT INTO project_candidates(id, normalized_name, candidate_json, scan_run_id) VALUES (?1, ?2, ?3, ?4)", params![candidate.id, candidate.normalized_name, json(candidate)?, scan_run_id]).map_err(|err| err.to_string())?;
+    }
+    tx.execute("DELETE FROM project_scan_runs WHERE id NOT IN (SELECT id FROM project_scan_runs ORDER BY scanned_at DESC LIMIT 20)", []).map_err(|err| err.to_string())?;
+    tx.commit().map_err(|err| err.to_string())?;
+    load_project_state(conn)
+}
+
+pub fn confirm_project_candidate(conn: &mut Connection, candidate_id: &str, index: &ArchiveIndex) -> AppResult<ProjectState> {
+    let candidate: ProjectCandidate = conn.query_row("SELECT candidate_json FROM project_candidates WHERE id = ?1", params![candidate_id], |row| {
+        let raw: String = row.get(0)?;
+        serde_json::from_str(&raw).map_err(|err| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(err)))
+    }).optional().map_err(|err| err.to_string())?.ok_or("Project candidate was not found")?;
+    let tx = conn.transaction().map_err(|err| err.to_string())?;
+    let now = now_ms();
+    tx.execute("INSERT INTO projects(name, normalized_name, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)", params![candidate.name, candidate.normalized_name, now]).map_err(|err| err.to_string())?;
+    let project_id = tx.last_insert_rowid();
+    for conversation_id in &candidate.conversation_ids {
+        let title = index.conversations.iter().find(|item| item.id == *conversation_id).map(|item| item.title.as_str()).unwrap_or(conversation_id);
+        tx.execute("INSERT OR IGNORE INTO project_memberships(project_id, target_type, target_id, conversation_id, title, source, created_at) VALUES (?1, 'conversation', ?2, ?2, ?3, 'detected', ?4)", params![project_id, conversation_id, title, now]).map_err(|err| err.to_string())?;
+    }
+    tx.execute("DELETE FROM project_candidates WHERE id = ?1", params![candidate_id]).map_err(|err| err.to_string())?;
+    tx.commit().map_err(|err| err.to_string())?;
+    load_project_state(conn)
+}
+
+pub fn dismiss_project_candidate(conn: &mut Connection, candidate_id: &str) -> AppResult<ProjectState> {
+    let normalized: String = conn.query_row("SELECT normalized_name FROM project_candidates WHERE id = ?1", params![candidate_id], |row| row.get(0)).optional().map_err(|err| err.to_string())?.ok_or("Project candidate was not found")?;
+    let tx = conn.transaction().map_err(|err| err.to_string())?;
+    tx.execute("INSERT OR REPLACE INTO dismissed_project_candidates(normalized_name, dismissed_at) VALUES (?1, ?2)", params![normalized, now_ms()]).map_err(|err| err.to_string())?;
+    tx.execute("DELETE FROM project_candidates WHERE id = ?1", params![candidate_id]).map_err(|err| err.to_string())?;
+    tx.commit().map_err(|err| err.to_string())?;
+    load_project_state(conn)
+}
+
+pub fn add_project_conversation(conn: &mut Connection, project_id: i64, conversation: &ConversationSummary) -> AppResult<ProjectState> {
+    let now = now_ms();
+    let changed = conn.execute("INSERT OR IGNORE INTO project_memberships(project_id, target_type, target_id, conversation_id, title, source, created_at) SELECT id, 'conversation', ?2, ?2, ?3, 'manual', ?4 FROM projects WHERE id = ?1", params![project_id, conversation.id, conversation.title, now]).map_err(|err| err.to_string())?;
+    if changed == 0 { return Err("Project was not found or the conversation is already a member".to_string()); }
+    conn.execute("UPDATE projects SET updated_at = ?2 WHERE id = ?1", params![project_id, now]).map_err(|err| err.to_string())?;
+    load_project_state(conn)
+}
+
+pub fn remove_project_conversation(conn: &mut Connection, project_id: i64, conversation_id: &str) -> AppResult<ProjectState> {
+    let changed = conn.execute("DELETE FROM project_memberships WHERE project_id = ?1 AND target_type = 'conversation' AND target_id = ?2", params![project_id, conversation_id]).map_err(|err| err.to_string())?;
+    if changed == 0 { return Err("Conversation is not a member of this project".to_string()); }
+    conn.execute("UPDATE projects SET updated_at = ?2 WHERE id = ?1", params![project_id, now_ms()]).map_err(|err| err.to_string())?;
+    load_project_state(conn)
+}
+
 pub fn active_archive_path(conn: &Connection) -> AppResult<Option<PathBuf>> {
     conn.query_row(
         "SELECT archive_path FROM archives WHERE active = 1 LIMIT 1",
@@ -1292,5 +1347,23 @@ mod tests {
         assert_eq!(loaded.memberships.len(), 1);
         assert_eq!(loaded.exclusions.len(), 1);
         assert_eq!(loaded.dismissed_candidates, vec!["not a project"]);
+    }
+
+    #[test]
+    fn targeted_project_membership_changes_do_not_replace_other_projects() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        conn.execute("INSERT INTO projects(id, name, normalized_name, created_at, updated_at) VALUES (1, 'Aegis', 'aegis', 1, 1), (2, 'Rust', 'rust', 1, 1)", []).unwrap();
+        let conversation: ConversationSummary = serde_json::from_value(serde_json::json!({
+            "id":"conversation-1", "title":"Aegis planning", "slug":"aegis-planning", "createTime":1.0, "updateTime":2.0, "createIso":null, "updateIso":null, "archived":false, "starred":false, "messageCount":1, "hiddenMessageCount":0, "codeBlockCount":0, "assetCount":0, "externalAssetCount":0, "snippet":"", "searchText":""
+        })).unwrap();
+        add_project_conversation(&mut conn, 1, &conversation).unwrap();
+        let after_add = load_project_state(&conn).unwrap();
+        assert_eq!(after_add.memberships.len(), 1);
+        assert!(after_add.projects.iter().any(|project| project.id == 2));
+        remove_project_conversation(&mut conn, 1, "conversation-1").unwrap();
+        let after_remove = load_project_state(&conn).unwrap();
+        assert!(after_remove.memberships.is_empty());
+        assert!(after_remove.projects.iter().any(|project| project.id == 2));
     }
 }

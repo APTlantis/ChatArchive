@@ -61,7 +61,7 @@ The same organizer works for conversations, code snippets, documents, image asse
 3. Add tags, collections, notes, or a favorite.
 4. Open **Knowledge** to browse saved collections, favorites, and recent notes.
 
-Use tags for reusable labels such as `release`, `legal`, `design`, or `rust`. Use collections for grouped work such as a release candidate, a client project, a research theme, or a migration plan.
+Use tags for reusable labels such as `release`, `legal`, `design`, or `rust`. Use collections for grouped work such as a release candidate, a client project, a research theme, or a migration plan. In Projects, scan for a short list of repeated title/tag/collection signals, confirm only the real projects, then open a project to review every conversation and add or remove membership manually.
 
 ## Practical Filing Pattern
 
@@ -89,4 +89,4 @@ It does not move, rename, or rewrite the original recovered document files. Expo
 
 - Binary formats such as PDF, DOCX, PPTX, and XLSX are preserved and exportable, but not rendered inline.
 - Metadata-only document pointers remain visible when the OpenAI export did not include the matching source blob.
-- Knowledge organization is manual in v0.1.2. Project Intelligence is deferred from the visible release surface.
+- Project Intelligence in v0.2.0 is local and operator-confirmed. It deliberately excludes code, attachments, numeric fragments, and boilerplate from project discovery.
