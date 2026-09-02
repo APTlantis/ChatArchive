@@ -52,6 +52,8 @@ import type {
   ViewerState,
   KnowledgeState,
   KnowledgeTarget,
+  ProjectState,
+  ProjectCandidate,
 } from './types';
 import {
   exportConversationMarkdown as exportConversationMarkdownDesktop,
@@ -76,6 +78,8 @@ import {
   saveKnowledgeState,
   selectLibraryFolder,
   restorePreviousImport,
+  scanProjects,
+  saveProjectState,
   toggleFavorite,
   togglePin,
   type LibraryStatus,
@@ -109,7 +113,7 @@ const DEFAULT_FILTERS: SearchFilters = {
   minMessages: '',
   maxMessages: '',
 };
-type AppView = 'dashboard' | 'conversation' | 'code' | 'documents' | 'assets' | 'knowledge' | 'library';
+type AppView = 'dashboard' | 'conversation' | 'code' | 'documents' | 'assets' | 'knowledge' | 'projects' | 'library';
 
 const DEFAULT_TAGS = ['WSL', 'Rust', 'Security', 'Docker', 'AI'];
 
@@ -917,6 +921,7 @@ function Sidebar({
   onDocumentExplorer,
   onAssetExplorer,
   onKnowledge,
+  onProjects,
   onLibrary,
 }: {
   index: ArchiveIndex;
@@ -935,6 +940,7 @@ function Sidebar({
   onDocumentExplorer: () => void;
   onAssetExplorer: () => void;
   onKnowledge: () => void;
+  onProjects: () => void;
   onLibrary: () => void;
 }) {
   function updateFilter<K extends keyof SearchFilters>(key: K, value: SearchFilters[K]) {
@@ -979,6 +985,10 @@ function Sidebar({
             <button className={activeView === 'knowledge' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onKnowledge}>
               <FolderKanban size={16} />
               Knowledge
+            </button>
+            <button className={activeView === 'projects' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onProjects}>
+              <BarChart3 size={16} />
+              Projects
             </button>
             <button className={activeView === 'library' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onLibrary}>
               <FileArchive size={16} />
@@ -1884,6 +1894,39 @@ function KnowledgeView({ state, onOpen, index, artifacts }: { state: KnowledgeSt
   );
 }
 
+function ProjectIntelligenceView({
+  state,
+  busy,
+  onScan,
+  onConfirm,
+  onDismiss,
+  onOpenConversation,
+}: {
+  state: ProjectState;
+  busy: boolean;
+  onScan: () => void;
+  onConfirm: (candidate: ProjectCandidate) => void;
+  onDismiss: (candidate: ProjectCandidate) => void;
+  onOpenConversation: (conversationId: string) => void;
+}) {
+  return (
+    <section className="explorer knowledge-view">
+      <div className="explorer-heading"><div className="brand-mark large"><BarChart3 size={24} /></div><div><p>Deterministic local signals, confirmed by you</p><h2>Project Intelligence</h2></div></div>
+      <div className="knowledge-summary">
+        <Stat label="Confirmed projects" value={state.projects.length.toLocaleString()} />
+        <Stat label="Candidates" value={state.candidates.length.toLocaleString()} />
+        <Stat label="Last scan" value={state.scanRuns[0] ? new Date(state.scanRuns[0].scannedAt).toLocaleDateString() : 'Not run'} />
+      </div>
+      <div className="setup-actions"><button className="toolbar-button active" type="button" disabled={busy} onClick={onScan}><Search size={16} />{busy ? 'Scanning…' : 'Scan archive for projects'}</button></div>
+      <p className="setup-message">Candidates are based on repeated titles, manual tags and collections, and artifact names across multiple conversations and months. ChatArchive never creates a project until you confirm it.</p>
+      <div className="knowledge-columns">
+        <section><h3><BarChart3 size={16} />Candidates</h3>{state.candidates.map((candidate) => <div className="knowledge-group" key={candidate.id}><strong>{candidate.name}</strong><span>{candidate.conversationIds.length} conversations · {candidate.monthCount} months</span><small>{candidate.evidence.slice(0, 3).map((evidence) => evidence.evidenceType).join(', ')}</small><div className="setup-actions"><button className="toolbar-button active" type="button" disabled={busy} onClick={() => onConfirm(candidate)}>Confirm project</button><button className="toolbar-button" type="button" disabled={busy} onClick={() => onDismiss(candidate)}>Dismiss</button></div></div>)}{!state.candidates.length ? <p className="empty-note">Run a scan to find repeat project signals.</p> : null}</section>
+        <section><h3><FolderKanban size={16} />Confirmed projects</h3>{state.projects.map((project) => { const memberships = state.memberships.filter((membership) => membership.projectId === project.id); return <div className="knowledge-group" key={project.id}><strong>{project.name}</strong><span>{memberships.length} conversations</span>{memberships.slice(0, 8).map((membership) => <button type="button" key={`${project.id}-${membership.targetId}`} onClick={() => onOpenConversation(membership.conversationId)}>{membership.title}</button>)}</div>; })}{!state.projects.length ? <p className="empty-note">Confirm a candidate to create a project workspace.</p> : null}</section>
+      </div>
+    </section>
+  );
+}
+
 function LibraryView({
   status,
   busy,
@@ -2014,6 +2057,8 @@ export default function App() {
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
   const [viewerState, setViewerState] = useState<ViewerState>(() => readViewerState());
   const [knowledgeState, setKnowledgeState] = useState<KnowledgeState>(() => readKnowledgeState());
+  const [projectState, setProjectState] = useState<ProjectState>(() => ({ scanRuns: [], candidates: [], projects: [], aliases: [], memberships: [], exclusions: [], dismissedCandidates: [] }));
+  const [projectBusy, setProjectBusy] = useState(false);
   const [organizerTarget, setOrganizerTarget] = useState<KnowledgeTarget | null>(null);
   const [activeView, setActiveView] = useState<AppView>('dashboard');
   const [selected, setSelected] = useState<ConversationSummary | null>(null);
@@ -2039,6 +2084,7 @@ export default function App() {
         if (status.artifacts) setArtifacts(status.artifacts);
         setViewerState(status.viewerState);
         setKnowledgeState(status.knowledgeState.tags.length ? status.knowledgeState : createEmptyKnowledgeState());
+        setProjectState(status.projectState);
       })
       .catch((err) => {
         setLibraryStatus({
@@ -2186,6 +2232,37 @@ export default function App() {
     }
   }
 
+  function applyProjectState(next: ProjectState) {
+    setProjectState(next);
+    saveProjectState(next).then(setProjectState).catch((err) => setLibraryMessage(err instanceof Error ? err.message : String(err)));
+  }
+
+  async function scanProjectCandidates() {
+    setProjectBusy(true);
+    try {
+      const next = await scanProjects();
+      if (next) setProjectState(next);
+    } catch (err) {
+      setLibraryMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setProjectBusy(false);
+    }
+  }
+
+  function confirmProject(candidate: ProjectCandidate) {
+    const now = Date.now();
+    const projectId = Math.max(0, ...projectState.projects.map((project) => project.id)) + 1;
+    const conversations = candidate.conversationIds.map((conversationId) => {
+      const conversation = index?.conversations.find((item) => item.id === conversationId);
+      return { projectId, targetType: 'conversation' as const, targetId: conversationId, conversationId, title: conversation?.title || conversationId, source: 'detected' as const, createdAt: now };
+    });
+    applyProjectState({ ...projectState, candidates: projectState.candidates.filter((item) => item.id !== candidate.id), projects: [...projectState.projects, { id: projectId, name: candidate.name, normalizedName: candidate.normalizedName, createdAt: now, updatedAt: now }], memberships: [...projectState.memberships, ...conversations] });
+  }
+
+  function dismissProject(candidate: ProjectCandidate) {
+    applyProjectState({ ...projectState, candidates: projectState.candidates.filter((item) => item.id !== candidate.id), dismissedCandidates: [...new Set([...projectState.dismissedCandidates, candidate.normalizedName])] });
+  }
+
   async function finishOpenAiImport(importer: (libraryPath?: string | null) => Promise<Awaited<ReturnType<typeof importOpenAiExport>>>) {
     setLibraryBusy(true);
     setLibraryMessage('Importing OpenAI export...');
@@ -2199,6 +2276,7 @@ export default function App() {
           setLibraryStatus(status);
           setViewerState(status.viewerState);
           setKnowledgeState(status.knowledgeState.tags.length ? status.knowledgeState : createEmptyKnowledgeState());
+          setProjectState(status.projectState);
         }
         setLibraryMessage(`Imported ${result.index.totals.conversations.toLocaleString()} conversations. Preserved ${result.reconciliation.preservedItems.toLocaleString()} saved items; ${result.reconciliation.unavailableItems.toLocaleString()} are unavailable in this export.`);
       } else {
@@ -2224,6 +2302,7 @@ export default function App() {
         setLibraryStatus(status);
         setViewerState(status.viewerState);
         setKnowledgeState(status.knowledgeState.tags.length ? status.knowledgeState : createEmptyKnowledgeState());
+        setProjectState(status.projectState);
       }
       setSelected(null);
       setConversation(null);
@@ -2400,7 +2479,7 @@ export default function App() {
   }
 
   return (
-    <div className={activeView === 'code' || activeView === 'documents' || activeView === 'assets' || activeView === 'knowledge' || activeView === 'library' ? 'app-shell explorer-open' : 'app-shell'}>
+    <div className={activeView === 'code' || activeView === 'documents' || activeView === 'assets' || activeView === 'knowledge' || activeView === 'projects' || activeView === 'library' ? 'app-shell explorer-open' : 'app-shell'}>
       <Sidebar
         index={index}
         conversations={filtered.conversations}
@@ -2432,6 +2511,10 @@ export default function App() {
         onKnowledge={() => {
           setSelected(null);
           setActiveView('knowledge');
+        }}
+        onProjects={() => {
+          setSelected(null);
+          setActiveView('projects');
         }}
         onLibrary={() => {
           setSelected(null);
@@ -2488,6 +2571,11 @@ export default function App() {
           <AssetExplorer artifacts={assetArtifacts} onOpenSource={openArtifactSource} onOpenAsset={setLightboxAsset} onOrganize={setOrganizerTarget} />
         ) : activeView === 'knowledge' ? (
           <KnowledgeView state={knowledgeState} onOpen={setOrganizerTarget} index={index} artifacts={artifacts} />
+        ) : activeView === 'projects' ? (
+          <ProjectIntelligenceView state={projectState} busy={projectBusy} onScan={() => void scanProjectCandidates()} onConfirm={confirmProject} onDismiss={dismissProject} onOpenConversation={(conversationId) => {
+            const target = index.conversations.find((item) => item.id === conversationId);
+            if (target) openConversation(target);
+          }} />
         ) : activeView === 'library' ? (
           <LibraryView
             status={libraryStatus}

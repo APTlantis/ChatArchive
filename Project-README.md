@@ -20,7 +20,7 @@ The current public line is v0.1.2 through the Microsoft Store. v0.2.0, *Export C
 
 The v0.1.2 release established a Windows-first Microsoft Store release using MSIX as the primary public Windows artifact. Partner Center package identity is authoritative for Store submission, and local self-signed MSIX packages are sideload evidence only. macOS and Linux readiness require platform-specific VM verification before any public claim.
 
-Project Intelligence remains deferred. The candidate focuses on the durable archive, artifact explorer, search, export, manual knowledge organization, and safe refresh/restore workflow.
+Project Intelligence is included in v0.2.0 as a deterministic, local candidate scanner with explicit operator confirmation/dismissal and persisted project memberships. The candidate focuses on the durable archive, artifact explorer, search, export, manual knowledge organization, project review, and safe refresh/restore workflow.
 
 ## Visual system
 

@@ -8,6 +8,10 @@ Library now lets an operator import a newer OpenAI export without moving the lib
 
 One immediately previous archive/database snapshot is retained for Restore previous import. Restoring swaps the active archive and SQLite state back together; it does not merge two exports.
 
+## Project Intelligence
+
+Project Intelligence is part of this candidate. It scans only local archive facts—repeated conversation titles, operator-created tags and collections, and artifact names—across multiple conversations and months. It presents candidates with evidence for operator confirmation or dismissal. Confirmed projects and their conversation memberships are saved locally and survive an export refresh when stable conversation identifiers remain available. It does not use a remote model, infer project meaning as fact, or create projects without operator confirmation.
+
 ## Design boundaries
 
 - The newest valid OpenAI export is authoritative for available archive content.

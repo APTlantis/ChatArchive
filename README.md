@@ -31,7 +31,7 @@ The currently verified archive contains 733 conversations, 29,861 visible messag
 
 > **Microsoft Store:** ChatArchive is available through the Microsoft Store. The v0.1.2 Store listing is the current public Windows distribution channel; the prior local MSIX, WACK, and lifecycle records remain useful engineering evidence, but are not substitutes for Store availability.
 
-> **Next candidate:** v0.2.0, *Export Continuity*, is a draft candidate with planned Store package version `1.0.3.0`. It adds in-place OpenAI export refresh and rollback while preserving user-authored library state. Its final package, hashes, signatures, WACK, lifecycle, and Store evidence are pending; see [the v0.2.0 release note](docs/ChatArchive%20v0.2.0%20-%20Export%20Continuity.md).
+> **Next candidate:** v0.2.0, *Export Continuity*, is a draft candidate with planned Store package version `1.0.3.0`. It adds in-place OpenAI export refresh/rollback and local, operator-confirmed Project Intelligence while preserving user-authored library state. Its final package, hashes, signatures, WACK, lifecycle, and Store evidence are pending; see [the v0.2.0 release note](docs/ChatArchive%20v0.2.0%20-%20Export%20Continuity.md).
 
 ![ChatArchive in the Microsoft Store](docs/assets/chatarchive-microsoft-store-listing.png)
 
@@ -249,7 +249,7 @@ This normalized layer is what makes future provider support realistic. Gemini, C
 - Mermaid diagram rendering is limited to fenced `mermaid`, `mmd`, and `zenuml` code blocks.
 - There is no built-in privacy scrubber yet. Treat generated archive files as sensitive.
 - Provider-neutral import begins with the Rust `ProviderImporter` boundary, but only the OpenAI implementation exists right now.
-- Project Intelligence is deferred from the next public release surface.
+- Project Intelligence uses local deterministic evidence and explicit operator confirmation; deeper timelines and dashboards remain future work.
 
 ## Privacy Notes
 
@@ -378,5 +378,5 @@ The React UI supports two data paths. In the desktop app it uses Tauri commands 
 
 ## Status
 
-Phase 1, Phase 2A-2C, and Knowledge Organization are implemented. ChatArchive is available through the Microsoft Store as a durable local OpenAI archive with SQLite-backed viewer state, sharded-export ingestion, `.dat` attachment recovery, rich conversation search, code and diagram rendering, dedicated Code, Document, and Asset explorers, and manual tags, collections, notes, and favorites. Project Intelligence is deferred from the public release surface. Phase 2D Link Explorer polish, provider adapters, privacy/redaction, and deeper retrieval remain future work.
+Phase 1, Phase 2A-2C, Knowledge Organization, and the v0.2.0 Project Intelligence candidate surface are implemented. ChatArchive is available through the Microsoft Store as a durable local OpenAI archive with SQLite-backed viewer state, sharded-export ingestion, `.dat` attachment recovery, rich conversation search, code and diagram rendering, dedicated Code, Document, and Asset explorers, manual tags, collections, notes, favorites, and local operator-confirmed project candidates. Phase 2D Link Explorer polish, deeper project timelines/dashboards, provider adapters, privacy/redaction, and deeper retrieval remain future work.
 

@@ -314,7 +314,7 @@ Asset
 
 **Goal:** Discover long-running projects.
 
-**Status:** Deferred from the next public release. Prototype code exists for local project scanning, candidate review, confirmed projects, aliases, curation overrides, dashboards, and timelines, but Project Intelligence is not part of the v0.1.2 Windows-first release surface. It should not be advertised as a current public-release capability until its behavior, documentation, persistence model, test coverage, and cross-platform expectations are reconciled.
+**Status:** Included in the v0.2.0 candidate as local deterministic scanning, candidate review, confirmed projects, dismissals, and persisted project memberships. The visible workflow requires operator confirmation; it is not an AI assertion engine. Timelines, dashboards, aliases, and broader curation remain future work until their interaction and test coverage are completed.
 
 This is where things become unique later.
 
