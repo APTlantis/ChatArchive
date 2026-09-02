@@ -25,12 +25,14 @@
   --bs-off-white: #e1e7db;
   --bs-electric-cyan: #00d8ff;
   --bs-arctic-cyan: #65f2ff;
+  --bs-pink: #ed72b6;
   --bs-teal: #21c6b8;
   --bs-aqua-teal: #3ad1c3;
   --bs-amber: #ff884d;
   --bs-brass: #d9a441;
   --bs-violet: #9c7cff;
   --bs-indigo: #6a5bff;
+  --bs-danger: #ff5c74;
   --bs-success: #30d58c;
   --bs-verified: #6fe3a4;
 
@@ -54,34 +56,77 @@
   --bs-archive: var(--bs-indigo);
   --bs-success-state: var(--bs-success);
   --bs-verified-state: var(--bs-verified);
+
+  /* Blue Slate 0.3.0 semantic contract. Keep product aliases below so layout stays stable. */
+  --bs-canvas: var(--bs-abyss);
+  --bs-canvas-recessed: var(--bs-deep-navy);
+  --bs-overlay: var(--bs-deep-navy);
+  --bs-popover: var(--bs-deep-navy);
+  --bs-input-surface: var(--bs-deep-navy);
+  --bs-table-surface: var(--bs-deep-navy);
+  --bs-disabled-surface: var(--bs-deep-navy);
+  --bs-content-primary: var(--bs-off-white);
+  --bs-content-emphasis: var(--bs-off-white);
+  --bs-content-secondary: var(--bs-sea-foam);
+  --bs-content-tertiary: var(--bs-pale-mist);
+  --bs-content-disabled: var(--bs-cool-grey);
+  --bs-link-hover: #b3faff;
+  --bs-code-accent: var(--bs-pink);
+  --bs-border-strong: var(--bs-cool-grey);
+  --bs-border-translucent: color-mix(in oklab, var(--bs-mist-blue) 28%, transparent);
+  --bs-intent-primary: var(--bs-electric-cyan);
+  --bs-intent-secondary: var(--bs-mist-blue);
+  --bs-intent-success: var(--bs-success);
+  --bs-intent-info: var(--bs-violet);
+  --bs-intent-warning: var(--bs-amber);
+  --bs-intent-danger: var(--bs-danger);
+  --bs-intent-light: var(--bs-sea-foam);
+  --bs-intent-dark: var(--bs-deep-navy);
+  --bs-validation-valid: var(--bs-verified);
+  --bs-validation-valid-border: var(--bs-success);
+  --bs-validation-invalid: var(--bs-danger);
+  --bs-validation-invalid-border: var(--bs-danger);
   --bs-font-display: "Aptos Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
   --bs-font-sans: "Aptos", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --bs-font-mono: "Cascadia Code", "Cascadia Mono", "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
   --bs-shadow-panel: 0 20px 70px rgb(0 0 0 / 0.32), inset 0 1px 0 rgb(225 231 219 / 0.07);
   --bs-shadow-signal: 0 0 0 1px rgb(101 242 255 / 0.3), 0 0 26px rgb(0 216 255 / 0.22);
+  --bs-radius-sm: 0.375rem;
+  --bs-radius-md: 0.625rem;
+  --bs-radius-lg: 0.875rem;
+  --bs-radius-xl: 1.25rem;
+  --bs-radius-xxl: 1.5rem;
+  --bs-space-1: 0.25rem;
+  --bs-space-2: 0.5rem;
+  --bs-space-3: 1rem;
+  --bs-space-4: 1.5rem;
+  --bs-space-5: 3rem;
+  --bs-focus-ring-width: 0.25rem;
+  --bs-focus-ring-opacity: 0.3;
+  --bs-focus-ring-color: rgb(101 242 255 / 0.3);
 
-  --bg: var(--bs-bg);
-  --rail: var(--bs-bg-soft);
+  --bg: var(--bs-canvas);
+  --rail: var(--bs-canvas-recessed);
   --rail-2: var(--bs-panel-blue);
   --panel: var(--bs-panel);
   --panel-2: var(--bs-panel-raised);
   --line: var(--bs-border);
   --line-soft: var(--bs-border-soft);
-  --text: var(--bs-text);
-  --muted: var(--bs-text-muted);
-  --soft: var(--bs-text-soft);
-  --accent: var(--bs-action);
+  --text: var(--bs-content-primary);
+  --muted: var(--bs-content-tertiary);
+  --soft: var(--bs-content-secondary);
+  --accent: var(--bs-intent-primary);
   --accent-2: var(--bs-aqua-teal);
-  --warning: var(--bs-warning);
+  --warning: var(--bs-intent-warning);
   --attention: var(--bs-attention);
   --taxonomy: var(--bs-taxonomy);
   --archive: var(--bs-archive);
-  --success: var(--bs-success-state);
-  --verified: var(--bs-verified-state);
+  --success: var(--bs-intent-success);
+  --verified: var(--bs-validation-valid);
   --user: var(--bs-steel-blue);
   --assistant: color-mix(in oklab, var(--bs-panel) 78%, var(--bs-bg));
   --code: var(--bs-abyss);
-  --danger: var(--bs-warning);
+  --danger: var(--bs-validation-invalid);
   --surface-low: color-mix(in oklab, var(--bs-bg) 72%, var(--bs-panel));
   --surface-control: color-mix(in oklab, var(--bs-panel-blue) 54%, var(--bs-bg));
   --surface-selected: color-mix(in oklab, var(--bs-teal) 18%, var(--bs-panel-blue));
@@ -95,6 +140,8 @@
   --overlay-border: color-mix(in oklab, var(--bs-text) 5%, transparent);
   --scroll-thumb: var(--bs-blue-grey);
   --scroll-thumb-hover: var(--bs-cool-grey);
+  --border-disabled: var(--bs-border-soft);
+  --surface-disabled: var(--bs-disabled-surface);
 }
 
 * {
@@ -125,12 +172,23 @@ button {
   color: inherit;
 }
 
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+  border-color: var(--border-disabled);
+  background: var(--surface-disabled);
+  color: var(--bs-content-disabled);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--bs-focus);
+  outline: var(--bs-focus-ring-width) solid var(--bs-focus);
   outline-offset: 2px;
   box-shadow: var(--bs-shadow-signal);
 }
@@ -141,7 +199,20 @@ a {
 }
 
 a:hover {
+  color: var(--bs-link-hover);
   text-decoration: underline;
+}
+
+input[aria-invalid="true"],
+textarea[aria-invalid="true"],
+select[aria-invalid="true"] {
+  border-color: var(--bs-validation-invalid-border);
+}
+
+input[aria-invalid="false"],
+textarea[aria-invalid="false"],
+select[aria-invalid="false"] {
+  border-color: var(--bs-validation-valid-border);
 }
 
 .app-shell {

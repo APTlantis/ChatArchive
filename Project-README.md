@@ -11,8 +11,8 @@ This document is the internal governance and handoff entry point. Existing `READ
 - [Project manifest](ChatArchive.manifest.toml)
 - [Project proposal](Project-Proposal.md)
 - [Modification instructions](AGENTS.md)
-- [DRS canonical standard](D:/.library/aptlantis_core/DRS/README.md)
-- [Workspace Governance Standard](D:/.library/aptlantis_core/WGS/README.md)
+- [DRS canonical standard](D:/.city_hall/DRS/README.md)
+- [Workspace Governance Standard](D:/.city_hall/WGS/README.md)
 
 ## Current state
 
@@ -24,7 +24,7 @@ Project Intelligence is included in v0.2.0 as a deterministic, local candidate s
 
 ## Visual system
 
-ChatArchive explicitly adopts [Blue Slate](D:/.library/aptlantis_core/blue.slate/Project-README.md) as a visual-system dependency for color tokens, typography, focus treatment, code surfaces, and status accents. This adoption does not replace the current product layout, React/Tauri workflow, archive data model, or DRS release gates.
+ChatArchive explicitly adopts [Blue Slate](D:/.city_hall/blue.slate/Project-README.md) as a visual-system dependency for color tokens, typography, focus treatment, code surfaces, and status accents. This adoption does not replace the current product layout, React/Tauri workflow, archive data model, or DRS release gates.
 
 This is a theme alignment only. It does not alter the Store release status or the normal DRS requirements for future package changes.
 
