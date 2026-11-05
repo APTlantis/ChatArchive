@@ -1,0 +1,11 @@
+.markdown-body .token.comment,.markdown-body .token.prolog,.markdown-body .token.doctype,.markdown-body .token.cdata{color:var(--apt-comment)}
+.markdown-body .token.punctuation,.markdown-body .token.operator{color:var(--apt-operator)}
+.markdown-body .token.property,.markdown-body .token.tag,.markdown-body .token.boolean,.markdown-body .token.constant,.markdown-body .token.symbol{color:var(--apt-constant)}
+.markdown-body .token.number{color:var(--apt-number)}
+.markdown-body .token.selector,.markdown-body .token.attr-name,.markdown-body .token.builtin,.markdown-body .token.class-name{color:var(--apt-type)}
+.markdown-body .token.string,.markdown-body .token.char,.markdown-body .token.attr-value{color:var(--apt-string)}
+.markdown-body .token.keyword,.markdown-body .token.atrule{color:var(--apt-keyword)}
+.markdown-body .token.function{color:var(--apt-function)}
+.markdown-body .token.regex,.markdown-body .token.important{color:var(--apt-primary)}
+.markdown-body .token.inserted{color:var(--apt-inserted)}
+.markdown-body .token.deleted{color:var(--apt-deleted)}

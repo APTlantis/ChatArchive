@@ -1,0 +1,4 @@
+.markdown-body details{border:1px solid var(--apt-border);padding:.7em;margin:1em 0}.markdown-body summary{cursor:pointer;color:var(--apt-primary)}
+.markdown-body kbd{background:var(--apt-elevated);border:1px solid var(--apt-border);border-radius:3px;padding:.1em .35em;font-family:monospace}
+.markdown-body .footnotes{color:var(--apt-muted);font-size:.9em}.markdown-body .markdown-alert{border-left:4px solid var(--alert-color);background:var(--apt-panel);padding:.7em 1em;margin:1em 0}.markdown-body .markdown-alert-title{color:var(--alert-color);font-weight:700}
+.markdown-body .markdown-alert-note{--alert-color:var(--apt-info)}.markdown-body .markdown-alert-tip{--alert-color:var(--apt-success)}.markdown-body .markdown-alert-important{--alert-color:var(--apt-secondary)}.markdown-body .markdown-alert-warning{--alert-color:var(--apt-warning)}.markdown-body .markdown-alert-caution{--alert-color:var(--apt-error)}

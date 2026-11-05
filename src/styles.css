@@ -1,40 +1,89 @@
+@import './theme/crystal-tokens.css';
+@import './theme/dnf-crystal-markdown-tokens.css';
+@import './theme/dnf-crystal-markdown.css';
+@import './theme/dnf-crystal-markdown-extras.css';
+@import './theme/dnf-crystal-markdown-syntax-prism.css';
+@import './library.css';
+
+/* ==========================================================================
+   Typography Pairings:
+   1. IBM Plex Sans + IBM Plex Mono
+   2. Inter + JetBrains Mono
+   3. Source Sans 3 + Source Code Pro
+   ========================================================================== */
+:root,
+html[data-typography="ibm-plex"],
+:root[data-typography="ibm-plex"] {
+  --bs-font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --bs-font-mono: "IBM Plex Mono", Consolas, monospace;
+  --bs-font-display: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+html[data-typography="inter"],
+:root[data-typography="inter"] {
+  --bs-font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --bs-font-mono: "JetBrains Mono", Consolas, monospace;
+  --bs-font-display: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+html[data-typography="source-sans"],
+:root[data-typography="source-sans"] {
+  --bs-font-sans: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --bs-font-mono: "Source Code Pro", Consolas, monospace;
+  --bs-font-display: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+html,
+body,
+:root {
+  font-family: var(--bs-font-sans);
+}
+
+code,
+pre,
+kbd,
+samp,
+.prism-code,
+[data-mono="true"] {
+  font-family: var(--bs-font-mono) !important;
+}
+
 :root {
   color-scheme: dark;
-  font-family:
-    "Aptos", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-family: var(--bs-font-sans);
   background: var(--bs-bg);
   color: var(--bs-text);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 
-  --bs-abyss: #050913;
-  --bs-deep-navy: #0b1728;
-  --bs-navy: #172536;
-  --bs-slate: #262f39;
-  --bs-steel: #40423f;
-  --bs-steel-blue: #192e46;
-  --bs-ocean-blue: #29384a;
-  --bs-dusk: #36485a;
-  --bs-blue-grey: #53606a;
-  --bs-cool-grey: #6f7e87;
-  --bs-mist-blue: #627786;
-  --bs-mist-grey: #768892;
-  --bs-pale-mist: #98a2a2;
-  --bs-sea-foam: #b9c9c5;
-  --bs-off-white: #e1e7db;
-  --bs-electric-cyan: #00d8ff;
-  --bs-arctic-cyan: #65f2ff;
-  --bs-pink: #ed72b6;
-  --bs-teal: #21c6b8;
-  --bs-aqua-teal: #3ad1c3;
-  --bs-amber: #ff884d;
-  --bs-brass: #d9a441;
-  --bs-violet: #9c7cff;
-  --bs-indigo: #6a5bff;
-  --bs-danger: #ff5c74;
-  --bs-success: #30d58c;
-  --bs-verified: #6fe3a4;
+  --bs-abyss: var(--crystal-background);
+  --bs-deep-navy: var(--crystal-panel);
+  --bs-navy: var(--crystal-panel);
+  --bs-slate: var(--crystal-elevated);
+  --bs-steel: var(--crystal-border);
+  --bs-steel-blue: var(--crystal-elevated);
+  --bs-ocean-blue: var(--crystal-elevated);
+  --bs-dusk: var(--crystal-border);
+  --bs-blue-grey: var(--crystal-muted);
+  --bs-cool-grey: var(--crystal-muted);
+  --bs-mist-blue: var(--crystal-secondary);
+  --bs-mist-grey: var(--crystal-muted);
+  --bs-pale-mist: var(--crystal-muted);
+  --bs-sea-foam: var(--crystal-foreground);
+  --bs-off-white: var(--crystal-foreground);
+  --bs-electric-cyan: var(--crystal-primary);
+  --bs-arctic-cyan: var(--crystal-link-hover);
+  --bs-pink: var(--crystal-keyword);
+  --bs-teal: var(--crystal-primary);
+  --bs-aqua-teal: var(--crystal-primary);
+  --bs-amber: var(--crystal-warning);
+  --bs-brass: var(--crystal-warning);
+  --bs-violet: var(--crystal-primary);
+  --bs-indigo: var(--crystal-secondary);
+  --bs-danger: var(--crystal-error-text);
+  --bs-success: var(--crystal-success);
+  --bs-verified: var(--crystal-success);
 
   --bs-bg: var(--bs-abyss);
   --bs-bg-soft: var(--bs-deep-navy);
@@ -57,7 +106,7 @@
   --bs-success-state: var(--bs-success);
   --bs-verified-state: var(--bs-verified);
 
-  /* Blue Slate 0.3.0 semantic contract. Keep product aliases below so layout stays stable. */
+  /* Legacy component aliases backed exclusively by dnf-Crystal tokens. */
   --bs-canvas: var(--bs-abyss);
   --bs-canvas-recessed: var(--bs-deep-navy);
   --bs-overlay: var(--bs-deep-navy);
@@ -70,7 +119,7 @@
   --bs-content-secondary: var(--bs-sea-foam);
   --bs-content-tertiary: var(--bs-pale-mist);
   --bs-content-disabled: var(--bs-cool-grey);
-  --bs-link-hover: #b3faff;
+  --bs-link-hover: var(--crystal-link-hover);
   --bs-code-accent: var(--bs-pink);
   --bs-border-strong: var(--bs-cool-grey);
   --bs-border-translucent: color-mix(in oklab, var(--bs-mist-blue) 28%, transparent);
@@ -86,11 +135,11 @@
   --bs-validation-valid-border: var(--bs-success);
   --bs-validation-invalid: var(--bs-danger);
   --bs-validation-invalid-border: var(--bs-danger);
-  --bs-font-display: "Aptos Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
-  --bs-font-sans: "Aptos", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --bs-font-mono: "Cascadia Code", "Cascadia Mono", "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --bs-font-display: var(--bs-font-display);
+  --bs-font-sans: var(--bs-font-sans);
+  --bs-font-mono: var(--bs-font-mono);
   --bs-shadow-panel: 0 20px 70px rgb(0 0 0 / 0.32), inset 0 1px 0 rgb(225 231 219 / 0.07);
-  --bs-shadow-signal: 0 0 0 1px rgb(101 242 255 / 0.3), 0 0 26px rgb(0 216 255 / 0.22);
+  --bs-shadow-signal: 0 0 0 1px color-mix(in srgb,var(--crystal-primary) 30%,transparent), 0 0 26px color-mix(in srgb,var(--crystal-primary) 22%,transparent);
   --bs-radius-sm: 0.375rem;
   --bs-radius-md: 0.625rem;
   --bs-radius-lg: 0.875rem;
@@ -103,7 +152,7 @@
   --bs-space-5: 3rem;
   --bs-focus-ring-width: 0.25rem;
   --bs-focus-ring-opacity: 0.3;
-  --bs-focus-ring-color: rgb(101 242 255 / 0.3);
+  --bs-focus-ring-color: color-mix(in srgb,var(--crystal-primary) 30%,transparent);
 
   --bg: var(--bs-canvas);
   --rail: var(--bs-canvas-recessed);
@@ -2442,4 +2491,577 @@ pre::-webkit-scrollbar-thumb:hover {
   .project-timeline > section {
     grid-template-columns: 1fr;
   }
+}
+
+/* ==========================================================================
+   Dual-List Relation Matrix & Sweeping Bottom Section (Workspace Canvas)
+   High-performance Many-to-Many Relational Graph Window
+   ========================================================================== */
+
+.workspace-canvas-bottom-section {
+  display: flex;
+  flex-direction: column;
+  background: var(--crystal-panel);
+  border-top: 1px solid var(--crystal-border);
+  box-shadow: 0 -8px 24px rgb(0 0 0 / 0.45);
+  transition: height 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+  z-index: 25;
+  position: sticky;
+  bottom: 0;
+}
+
+.workspace-canvas-bottom-section.minimized {
+  height: 42px !important;
+  overflow: hidden;
+}
+
+.workspace-canvas-bottom-section.docked {
+  height: 380px;
+  max-height: 52vh;
+}
+
+.workspace-canvas-bottom-section.expanded {
+  height: 580px;
+  max-height: 80vh;
+}
+
+.workspace-canvas-bottom-section.fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  height: 100vh;
+  max-height: 100vh;
+  border-top: none;
+}
+
+.matrix-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--crystal-nav-bg, #101116);
+  border-bottom: 1px solid var(--crystal-border);
+  gap: 12px;
+  user-select: none;
+  min-height: 42px;
+}
+
+.matrix-header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--crystal-foreground);
+  text-transform: uppercase;
+}
+
+.matrix-header-title .matrix-badge {
+  background: var(--crystal-primary);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 12px;
+  letter-spacing: normal;
+}
+
+.matrix-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Typography Switcher Bar */
+.typography-switcher-pills {
+  display: inline-flex;
+  align-items: center;
+  background: var(--crystal-input-bg);
+  border: 1px solid var(--crystal-border);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.typography-switcher-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--crystal-muted);
+  text-transform: uppercase;
+  padding: 0 6px;
+  letter-spacing: 0.04em;
+}
+
+.typography-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: transparent;
+  border: none;
+  color: var(--crystal-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.typography-btn:hover {
+  color: var(--crystal-foreground);
+  background: var(--crystal-elevated);
+}
+
+.typography-btn.active {
+  background: var(--crystal-primary);
+  color: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+}
+
+.matrix-three-columns {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.4fr) minmax(310px, 1.1fr);
+  gap: 12px;
+  padding: 12px 16px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.matrix-column {
+  background: var(--crystal-elevated);
+  border: 1px solid var(--crystal-border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.matrix-column-head {
+  padding: 10px 12px;
+  background: var(--crystal-panel);
+  border-bottom: 1px solid var(--crystal-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.matrix-column-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.matrix-column-title {
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--crystal-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.matrix-column-title strong {
+  color: var(--crystal-foreground);
+}
+
+.matrix-search-input-wrap {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.matrix-search-input-wrap input {
+  width: 100%;
+  height: 28px;
+  padding: 4px 26px 4px 28px;
+  font-size: 12px;
+  border-radius: 5px;
+  background: var(--crystal-input-bg);
+  border: 1px solid var(--crystal-border);
+  color: var(--crystal-foreground);
+  outline: none;
+}
+
+.matrix-search-input-wrap input:focus {
+  border-color: var(--crystal-focus);
+  box-shadow: 0 0 0 1px var(--crystal-focus);
+}
+
+.matrix-search-icon {
+  position: absolute;
+  left: 8px;
+  color: var(--crystal-muted);
+  pointer-events: none;
+}
+
+.matrix-search-clear {
+  position: absolute;
+  right: 6px;
+  background: transparent;
+  border: none;
+  color: var(--crystal-muted);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.matrix-column-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  padding: 4px;
+}
+
+/* 1-Line High High-Density Rows */
+.matrix-row {
+  height: 30px;
+  line-height: 30px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--crystal-foreground);
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  transition: background 0.1s ease, border-color 0.1s ease;
+}
+
+.matrix-row:hover {
+  background: color-mix(in srgb, var(--crystal-primary) 12%, transparent);
+}
+
+.matrix-row.active {
+  background: var(--crystal-selection);
+  border-color: var(--crystal-primary);
+  color: var(--crystal-selection-text);
+  font-weight: 600;
+}
+
+.matrix-folder-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.matrix-dots-spacer {
+  flex: 1;
+  border-bottom: 1px dotted var(--crystal-border);
+  margin: 0 4px;
+  opacity: 0.45;
+  min-width: 12px;
+}
+
+.matrix-ptrs-count {
+  font-size: 11px;
+  color: var(--crystal-muted);
+  white-space: nowrap;
+  font-family: var(--bs-font-mono);
+}
+
+/* Column 2 Pointer Row */
+.matrix-pointer-row {
+  position: sticky;
+  bottom: 0;
+  height: 29px;
+  line-height: 29px;
+  padding: 0 6px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--crystal-foreground);
+  border-bottom: 1px solid color-mix(in srgb, var(--crystal-border) 20%, transparent);
+  transition: background 0.1s ease;
+}
+
+.matrix-pointer-row:hover {
+  background: color-mix(in srgb, var(--crystal-elevated) 80%, #fff 5%);
+}
+
+.matrix-type-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.matrix-pointer-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+.matrix-link-indicator {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--crystal-primary) 20%, transparent);
+  color: var(--crystal-primary);
+  border: 1px solid color-mix(in srgb, var(--crystal-primary) 40%, transparent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.matrix-link-indicator:hover {
+  background: var(--crystal-primary);
+  color: #fff;
+}
+
+.matrix-unlink-btn {
+  opacity: 0;
+  background: transparent;
+  border: none;
+  color: var(--crystal-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  line-height: 1;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.matrix-pointer-row:hover .matrix-unlink-btn {
+  opacity: 1;
+}
+
+.matrix-unlink-btn:hover {
+  color: var(--crystal-error-text, #ff5c74);
+  background: color-mix(in srgb, #ff5c74 15%, transparent);
+}
+
+/* Overlapping Collections Popover */
+.matrix-col-popover {
+  position: absolute;
+  right: 28px;
+  top: 100%;
+  background: var(--crystal-dialog-bg, #27292e);
+  border: 1px solid var(--crystal-primary);
+  border-radius: 6px;
+  padding: 8px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.6);
+  z-index: 100;
+  min-width: 200px;
+  max-width: 280px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.matrix-col-popover h4 {
+  font-size: 11px;
+  color: var(--crystal-muted);
+  margin: 0 0 6px 0;
+  text-transform: uppercase;
+}
+
+.matrix-col-popover button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 4px 6px;
+  font-size: 11px;
+  background: transparent;
+  border: none;
+  color: var(--crystal-foreground);
+  cursor: pointer;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.matrix-col-popover button:hover {
+  background: var(--crystal-selection);
+  color: #fff;
+}
+
+/* Column 3 Batch Ingestion */
+.matrix-ingestion-container {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 14px;
+  gap: 12px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.matrix-ingestion-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: color-mix(in srgb, var(--crystal-primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--crystal-primary) 35%, transparent);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--crystal-foreground);
+}
+
+.matrix-ingestion-status.active {
+  background: color-mix(in srgb, var(--crystal-primary) 22%, transparent);
+  border-color: var(--crystal-primary);
+}
+
+.matrix-ingestion-queue {
+  max-height: 110px;
+  overflow-y: auto;
+  border: 1px solid var(--crystal-border);
+  border-radius: 6px;
+  background: var(--crystal-input-bg);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.matrix-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--crystal-elevated) 60%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.matrix-action-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.matrix-action-label {
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  color: var(--crystal-muted);
+  text-transform: uppercase;
+}
+
+.matrix-radio-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--crystal-foreground);
+  cursor: pointer;
+  user-select: none;
+}
+
+.matrix-radio-item input[type="radio"] {
+  accent-color: var(--crystal-primary);
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.matrix-new-collection-input {
+  width: 100%;
+  height: 28px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 5px;
+  background: var(--crystal-input-bg);
+  border: 1px solid var(--crystal-border);
+  color: var(--crystal-foreground);
+  margin-top: 4px;
+}
+
+.matrix-execute-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: 6px;
+  background: var(--crystal-primary-rest-bg, #37005b);
+  border: 1px solid var(--crystal-primary);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.4);
+  transition: all 0.15s ease;
+}
+
+.matrix-execute-btn:hover:not(:disabled) {
+  background: var(--crystal-primary-hover-bg, #470472);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--crystal-primary) 40%, transparent);
+  transform: translateY(-1px);
+}
+
+.matrix-execute-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.matrix-tx-toast {
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: 11px;
+  background: color-mix(in srgb, var(--crystal-success, #30d58c) 15%, transparent);
+  border: 1px solid var(--crystal-success, #30d58c);
+  color: var(--crystal-foreground);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Checkbox styling across explorers */
+.matrix-checkbox-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.matrix-checkbox-cell input[type="checkbox"] {
+  accent-color: var(--crystal-primary);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+/* Quick Selection banner for explorers */
+.explorer-selection-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
+  background: color-mix(in srgb, var(--crystal-primary) 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--crystal-primary) 30%, transparent);
+  font-size: 12px;
+  color: var(--crystal-foreground);
+  gap: 12px;
+}
+
+.explorer-selection-banner strong {
+  color: var(--crystal-primary);
+}
+
+.explorer-selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

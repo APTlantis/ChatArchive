@@ -33,8 +33,13 @@ import {
   Search,
   Star,
   Tags,
+  Type,
   X,
 } from 'lucide-react';
+import DualListRelationMatrix, {
+  TYPOGRAPHY_OPTIONS,
+  type TypographyOption,
+} from './DualListRelationMatrix';
 import type {
   ArchiveAsset,
   AssetArtifact,
@@ -1247,10 +1252,18 @@ function CodeExplorer({
   artifacts,
   onOpenSource,
   onOrganize,
+  selectedTargets,
+  onToggleSelectTarget,
+  onSelectAllVisible,
+  onClearSelection,
 }: {
   artifacts: CodeArtifact[];
   onOpenSource: (artifact: CodeArtifact) => void;
   onOrganize: (target: KnowledgeTarget) => void;
+  selectedTargets?: KnowledgeTarget[];
+  onToggleSelectTarget?: (target: KnowledgeTarget) => void;
+  onSelectAllVisible?: (targets: KnowledgeTarget[]) => void;
+  onClearSelection?: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [language, setLanguage] = useState('all');
@@ -1267,6 +1280,10 @@ function CodeExplorer({
   const selected = selectedExplorerArtifact(filtered, selectedId);
   const visibleRows = visibleExplorerRows(filtered);
   const highlighted = useMemo(() => (selected ? highlightCode(selected.text, selected.language) : null), [selected]);
+
+  const selectedKeys = useMemo(() => {
+    return new Set((selectedTargets || []).map(targetKey));
+  }, [selectedTargets]);
 
   useEffect(() => {
     if (!filtered.length) {
@@ -1296,6 +1313,41 @@ function CodeExplorer({
           {filtered.length.toLocaleString()} of {artifacts.length.toLocaleString()} snippets
         </span>
       </div>
+      {onToggleSelectTarget ? (
+        <div className="explorer-selection-banner">
+          <span>
+            <strong>{selectedTargets?.length || 0}</strong> items queued for Batch Ingestion below
+          </span>
+          <div className="explorer-selection-actions">
+            <button
+              type="button"
+              className="toolbar-button"
+              style={{ padding: '2px 8px', fontSize: 11 }}
+              onClick={() => {
+                const targets: KnowledgeTarget[] = visibleRows.map((r) => ({
+                  targetType: 'code',
+                  targetId: r.id,
+                  conversationId: r.conversationId,
+                  title: `${codeArtifactLanguage(r)}: ${r.conversationTitle}`,
+                }));
+                onSelectAllVisible?.(targets);
+              }}
+            >
+              Select visible ({visibleRows.length})
+            </button>
+            {selectedTargets && selectedTargets.length > 0 ? (
+              <button
+                type="button"
+                className="toolbar-button"
+                style={{ padding: '2px 8px', fontSize: 11 }}
+                onClick={onClearSelection}
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <div className="explorer-grid">
         <aside className="explorer-facets">
           <button className={language === 'all' ? 'facet-row active' : 'facet-row'} type="button" onClick={() => setLanguage('all')}>
@@ -1315,23 +1367,50 @@ function CodeExplorer({
           ))}
         </aside>
         <div className="artifact-list">
-          {visibleRows.map((item) => (
-            <button
-              className={selected?.id === item.id ? 'artifact-row selected' : 'artifact-row'}
-              type="button"
-              key={item.id}
-              onClick={() => setSelectedId(item.id)}
-            >
-              <span>
-                <Code2 size={14} />
-                {item.conversationTitle}
-              </span>
-              <small>
-                {codeArtifactLanguage(item)} - {roleLabel(item.role)} - {formatDate(item.createTime)}
-              </small>
-              <p>{item.preview}</p>
-            </button>
-          ))}
+          {visibleRows.map((item) => {
+            const target: KnowledgeTarget = {
+              targetType: 'code',
+              targetId: item.id,
+              conversationId: item.conversationId,
+              title: `${codeArtifactLanguage(item)}: ${item.conversationTitle}`,
+            };
+            const isChecked = selectedKeys.has(targetKey(target));
+            return (
+              <div
+                key={item.id}
+                className={selected?.id === item.id ? 'artifact-row selected' : 'artifact-row'}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+                onClick={() => setSelectedId(item.id)}
+              >
+                {onToggleSelectTarget ? (
+                  <div
+                    className="matrix-checkbox-cell"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSelectTarget(target);
+                    }}
+                    title="Queue code for batch ingestion"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {}}
+                    />
+                  </div>
+                ) : null}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Code2 size={14} />
+                    {item.conversationTitle}
+                  </span>
+                  <small>
+                    {codeArtifactLanguage(item)} - {roleLabel(item.role)} - {formatDate(item.createTime)}
+                  </small>
+                  <p>{item.preview}</p>
+                </div>
+              </div>
+            );
+          })}
           {filtered.length > visibleRows.length ? (
             <p className="list-limit-note">Showing first {visibleRows.length.toLocaleString()} matches. Narrow search or choose a language to reduce the list.</p>
           ) : null}
@@ -1392,10 +1471,18 @@ function DocumentExplorer({
   artifacts,
   onOpenSource,
   onOrganize,
+  selectedTargets,
+  onToggleSelectTarget,
+  onSelectAllVisible,
+  onClearSelection,
 }: {
   artifacts: DocumentArtifact[];
   onOpenSource: (artifact: DocumentArtifact) => void;
   onOrganize: (target: KnowledgeTarget) => void;
+  selectedTargets?: KnowledgeTarget[];
+  onToggleSelectTarget?: (target: KnowledgeTarget) => void;
+  onSelectAllVisible?: (targets: KnowledgeTarget[]) => void;
+  onClearSelection?: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [documentType, setDocumentType] = useState('all');
@@ -1414,6 +1501,10 @@ function DocumentExplorer({
 
   const selected = selectedExplorerArtifact(filtered, selectedId);
   const visibleRows = visibleExplorerRows(filtered);
+
+  const selectedKeys = useMemo(() => {
+    return new Set((selectedTargets || []).map(targetKey));
+  }, [selectedTargets]);
 
   useEffect(() => {
     if (!filtered.length) {
@@ -1469,6 +1560,41 @@ function DocumentExplorer({
         </label>
         <span>{filtered.length.toLocaleString()} of {artifacts.length.toLocaleString()} documents</span>
       </div>
+      {onToggleSelectTarget ? (
+        <div className="explorer-selection-banner">
+          <span>
+            <strong>{selectedTargets?.length || 0}</strong> items queued for Batch Ingestion below
+          </span>
+          <div className="explorer-selection-actions">
+            <button
+              type="button"
+              className="toolbar-button"
+              style={{ padding: '2px 8px', fontSize: 11 }}
+              onClick={() => {
+                const targets: KnowledgeTarget[] = visibleRows.map((r) => ({
+                  targetType: 'document',
+                  targetId: r.id,
+                  conversationId: r.conversationId,
+                  title: r.title,
+                }));
+                onSelectAllVisible?.(targets);
+              }}
+            >
+              Select visible ({visibleRows.length})
+            </button>
+            {selectedTargets && selectedTargets.length > 0 ? (
+              <button
+                type="button"
+                className="toolbar-button"
+                style={{ padding: '2px 8px', fontSize: 11 }}
+                onClick={onClearSelection}
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <div className="explorer-grid">
         <aside className="explorer-facets">
           <button className={documentType === 'all' ? 'facet-row active' : 'facet-row'} type="button" onClick={() => setDocumentType('all')}>
@@ -1481,13 +1607,47 @@ function DocumentExplorer({
           ))}
         </aside>
         <div className="artifact-list">
-          {visibleRows.map((item) => (
-            <button className={selected?.id === item.id ? 'artifact-row selected' : 'artifact-row'} type="button" key={item.id} onClick={() => setSelectedId(item.id)}>
-              <span><FileText size={14} />{item.title}</span>
-              <small>{item.documentType} - {roleLabel(item.role)} - {formatDate(item.createTime)}</small>
-              <p>{item.preview}</p>
-            </button>
-          ))}
+          {visibleRows.map((item) => {
+            const target: KnowledgeTarget = {
+              targetType: 'document',
+              targetId: item.id,
+              conversationId: item.conversationId,
+              title: item.title,
+            };
+            const isChecked = selectedKeys.has(targetKey(target));
+            return (
+              <div
+                key={item.id}
+                className={selected?.id === item.id ? 'artifact-row selected' : 'artifact-row'}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+                onClick={() => setSelectedId(item.id)}
+              >
+                {onToggleSelectTarget ? (
+                  <div
+                    className="matrix-checkbox-cell"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSelectTarget(target);
+                    }}
+                    title="Queue document for batch ingestion"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {}}
+                    />
+                  </div>
+                ) : null}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <FileText size={14} />{item.title}
+                  </span>
+                  <small>{item.documentType} - {roleLabel(item.role)} - {formatDate(item.createTime)}</small>
+                  <p>{item.preview}</p>
+                </div>
+              </div>
+            );
+          })}
           {filtered.length > visibleRows.length ? <p className="list-limit-note">Showing first {visibleRows.length.toLocaleString()} matches. Narrow the search or choose a document type.</p> : null}
           {!filtered.length ? <p className="empty-note">No documents match those filters.</p> : null}
         </div>
@@ -1525,11 +1685,19 @@ function AssetExplorer({
   onOpenSource,
   onOpenAsset,
   onOrganize,
+  selectedTargets,
+  onToggleSelectTarget,
+  onSelectAllVisible,
+  onClearSelection,
 }: {
   artifacts: AssetArtifact[];
   onOpenSource: (artifact: AssetArtifact) => void;
   onOpenAsset: (artifact: AssetArtifact) => void;
   onOrganize: (target: KnowledgeTarget) => void;
+  selectedTargets?: KnowledgeTarget[];
+  onToggleSelectTarget?: (target: KnowledgeTarget) => void;
+  onSelectAllVisible?: (targets: KnowledgeTarget[]) => void;
+  onClearSelection?: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState('all');
@@ -1546,6 +1714,10 @@ function AssetExplorer({
   }, [artifacts, extension, kind, query]);
   const selected = selectedExplorerArtifact(filtered, selectedId);
   const visibleRows = visibleExplorerRows(filtered);
+
+  const selectedKeys = useMemo(() => {
+    return new Set((selectedTargets || []).map(targetKey));
+  }, [selectedTargets]);
 
   useEffect(() => {
     if (!filtered.length) {
@@ -1565,6 +1737,41 @@ function AssetExplorer({
         <label className="explorer-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, pointer, extension, dimensions, URL, or conversation" /></label>
         <span>{filtered.length.toLocaleString()} of {artifacts.length.toLocaleString()} assets</span>
       </div>
+      {onToggleSelectTarget ? (
+        <div className="explorer-selection-banner">
+          <span>
+            <strong>{selectedTargets?.length || 0}</strong> items queued for Batch Ingestion below
+          </span>
+          <div className="explorer-selection-actions">
+            <button
+              type="button"
+              className="toolbar-button"
+              style={{ padding: '2px 8px', fontSize: 11 }}
+              onClick={() => {
+                const targets: KnowledgeTarget[] = visibleRows.map((r) => ({
+                  targetType: 'asset',
+                  targetId: r.id,
+                  conversationId: r.conversationId,
+                  title: assetDisplayName(r),
+                }));
+                onSelectAllVisible?.(targets);
+              }}
+            >
+              Select visible ({visibleRows.length})
+            </button>
+            {selectedTargets && selectedTargets.length > 0 ? (
+              <button
+                type="button"
+                className="toolbar-button"
+                style={{ padding: '2px 8px', fontSize: 11 }}
+                onClick={onClearSelection}
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <div className="explorer-grid">
         <aside className="explorer-facets">
           <h3>Asset state</h3>
@@ -1578,13 +1785,45 @@ function AssetExplorer({
           ))}
         </aside>
         <div className="artifact-list asset-artifact-list">
-          {visibleRows.map((item) => (
-            <button className={selected?.id === item.id ? `asset-artifact-row selected ${item.kind}` : `asset-artifact-row ${item.kind}`} type="button" key={item.id} onClick={() => setSelectedId(item.id)}>
-              {item.kind === 'missing' ? <div className="asset-image-fallback"><FileImage size={22} /><span>Missing</span></div> : <ArtifactImage asset={item} />}
-              <strong>{assetDisplayName(item)}</strong>
-              <small>{assetFileExtension(item)} - {item.conversationTitle}</small>
-            </button>
-          ))}
+          {visibleRows.map((item) => {
+            const target: KnowledgeTarget = {
+              targetType: 'asset',
+              targetId: item.id,
+              conversationId: item.conversationId,
+              title: assetDisplayName(item),
+            };
+            const isChecked = selectedKeys.has(targetKey(target));
+            return (
+              <div
+                key={item.id}
+                className={selected?.id === item.id ? `asset-artifact-row selected ${item.kind}` : `asset-artifact-row ${item.kind}`}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+                onClick={() => setSelectedId(item.id)}
+              >
+                {onToggleSelectTarget ? (
+                  <div
+                    className="matrix-checkbox-cell"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSelectTarget(target);
+                    }}
+                    title="Queue asset for batch ingestion"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {}}
+                    />
+                  </div>
+                ) : null}
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                  {item.kind === 'missing' ? <div className="asset-image-fallback"><FileImage size={22} /><span>Missing</span></div> : <ArtifactImage asset={item} />}
+                  <strong>{assetDisplayName(item)}</strong>
+                  <small>{assetFileExtension(item)} - {item.conversationTitle}</small>
+                </div>
+              </div>
+            );
+          })}
           {filtered.length > visibleRows.length ? <p className="list-limit-note">Showing first {visibleRows.length.toLocaleString()} matches. Narrow the search, asset state, or file type.</p> : null}
           {!filtered.length ? <p className="empty-note">No assets match those filters.</p> : null}
         </div>
@@ -1688,6 +1927,8 @@ function Header({
   onPin,
   onRead,
   onOrganize,
+  activeTypography,
+  onChangeTypography,
 }: {
   conversation: ConversationFile | null;
   messages: ArchiveMessage[];
@@ -1701,6 +1942,8 @@ function Header({
   onPin: () => void;
   onRead: () => void;
   onOrganize: () => void;
+  activeTypography?: TypographyOption;
+  onChangeTypography?: (option: TypographyOption) => void;
 }) {
   const [exported, setExported] = useState(false);
   const allCode = messages
@@ -1725,8 +1968,28 @@ function Header({
         </div>
         <h2>{conversation?.title || 'Chat Archive'}</h2>
       </div>
-      {conversation ? (
-        <div className="topbar-actions">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {activeTypography && onChangeTypography ? (
+          <div className="typography-switcher-pills" title="Test typography font pairings">
+            <span className="typography-switcher-label">
+              <Type size={11} style={{ display: 'inline', marginRight: 3, verticalAlign: 'middle' }} />
+              Typography:
+            </span>
+            {TYPOGRAPHY_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                className={`typography-btn ${activeTypography === opt.id ? 'active' : ''}`}
+                onClick={() => onChangeTypography(opt.id)}
+                title={`Sans: ${opt.sans} | Mono: ${opt.mono}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {conversation ? (
+          <div className="topbar-actions">
           <button className="toolbar-button" type="button" onClick={onOrganize}>
             <Tags size={16} />
             Organize
@@ -1762,6 +2025,7 @@ function Header({
           </button>
         </div>
       ) : null}
+      </div>
     </header>
   );
 }
@@ -1868,7 +2132,29 @@ function KnowledgeOrganizer({
   );
 }
 
-function KnowledgeView({ state, onOpen, index, artifacts }: { state: KnowledgeState; onOpen: (target: KnowledgeTarget) => void; index: ArchiveIndex; artifacts: ArtifactIndex | null }) {
+function KnowledgeView({
+  state,
+  onOpen,
+  index,
+  artifacts,
+  onApplyKnowledgeState,
+  selectedTargets,
+  onSelectTargets,
+  onClearSelection,
+  activeTypography,
+  onChangeTypography,
+}: {
+  state: KnowledgeState;
+  onOpen: (target: KnowledgeTarget) => void;
+  index: ArchiveIndex;
+  artifacts: ArtifactIndex | null;
+  onApplyKnowledgeState: (state: KnowledgeState) => void;
+  selectedTargets: KnowledgeTarget[];
+  onSelectTargets: (targets: KnowledgeTarget[] | ((prev: KnowledgeTarget[]) => KnowledgeTarget[])) => void;
+  onClearSelection: () => void;
+  activeTypography: TypographyOption;
+  onChangeTypography: (opt: TypographyOption) => void;
+}) {
   const targets = new Map<string, KnowledgeTarget>();
   [...state.favorites, ...state.notes, ...state.collectionItems, ...state.tagLinks].forEach((item) => targets.set(targetKey(item), item));
   const isAvailable = (item: KnowledgeTarget) => {
@@ -1876,22 +2162,68 @@ function KnowledgeView({ state, onOpen, index, artifacts }: { state: KnowledgeSt
     return (artifacts?.[item.targetType === 'code' ? 'code' : item.targetType === 'document' ? 'documents' : item.targetType === 'asset' ? 'assets' : 'links'] || []).some((artifact) => artifact.id === item.targetId);
   };
   const targetLabel = (item: KnowledgeTarget) => `${item.targetType}${isAvailable(item) ? '' : ' · unavailable'}`;
+
   return (
-    <section className="explorer knowledge-view">
-      <div className="explorer-heading"><div className="brand-mark large"><FolderKanban size={24} /></div><div><p>Knowledge organization</p><h2>Knowledge Base</h2></div></div>
+    <section className="explorer knowledge-view" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="explorer-heading">
+        <div className="brand-mark large"><FolderKanban size={24} /></div>
+        <div>
+          <p>Relational Matrix & Knowledge Organization</p>
+          <h2>Workspace & Knowledge Base</h2>
+        </div>
+      </div>
       <div className="knowledge-summary">
         <Stat label="Organized items" value={targets.size.toLocaleString()} />
         <Stat label="Tags" value={state.tags.length.toLocaleString()} />
         <Stat label="Collections" value={state.collections.length.toLocaleString()} />
         <Stat label="Notes" value={state.notes.length.toLocaleString()} />
       </div>
-      <div className="knowledge-columns">
-        <section><h3><FolderKanban size={16} />Collections</h3>{state.collections.map((collection) => {
-          const items = state.collectionItems.filter((item) => item.collectionId === collection.id);
-          return <div className="knowledge-group" key={collection.id}><strong>{collection.name}</strong><span>{items.length} items</span>{items.map((item) => <button type="button" key={targetKey(item)} onClick={() => onOpen(item)}>{item.title}<small>{targetLabel(item)}</small></button>)}</div>;
-        })}{!state.collections.length ? <p className="empty-note">Create a collection from any conversation or artifact.</p> : null}</section>
-        <section><h3><Star size={16} />Favorites</h3>{state.favorites.map((item) => <button className="knowledge-item" type="button" key={targetKey(item)} onClick={() => onOpen(item)}><span>{item.title}</span><small>{targetLabel(item)}</small></button>)}{!state.favorites.length ? <p className="empty-note">Star useful conversations and artifacts.</p> : null}</section>
-        <section><h3><NotebookPen size={16} />Recent notes</h3>{state.notes.map((note) => <button className="knowledge-item note" type="button" key={note.id} onClick={() => onOpen(note)}><span>{note.body}</span><small>{note.title}{isAvailable(note) ? '' : ' · unavailable'}</small></button>)}{!state.notes.length ? <p className="empty-note">Attach implementation context where it belongs.</p> : null}</section>
+
+      {/* Embedded Dual-List Relation Matrix (Command Center) */}
+      <DualListRelationMatrix
+        knowledgeState={state}
+        onApplyKnowledgeState={onApplyKnowledgeState}
+        selectedTargets={selectedTargets}
+        onSelectTargets={onSelectTargets}
+        onClearSelection={onClearSelection}
+        onOpenTarget={onOpen}
+        artifacts={artifacts}
+        index={index}
+        activeTypography={activeTypography}
+        onChangeTypography={onChangeTypography}
+        viewMode="expanded"
+      />
+
+      {/* Dedicated Metadata Tags, Favorites, and Notes */}
+      <div className="knowledge-columns" style={{ marginTop: 8 }}>
+        <section>
+          <h3><Star size={16} />Favorites ({state.favorites.length})</h3>
+          {state.favorites.map((item) => (
+            <button className="knowledge-item" type="button" key={targetKey(item)} onClick={() => onOpen(item)}>
+              <span>{item.title}</span><small>{targetLabel(item)}</small>
+            </button>
+          ))}
+          {!state.favorites.length ? <p className="empty-note">Star useful conversations and artifacts.</p> : null}
+        </section>
+        <section>
+          <h3><Tags size={16} />Metadata Tags ({state.tags.length})</h3>
+          <div className="knowledge-options" style={{ padding: '8px 0' }}>
+            {state.tags.map((tag) => (
+              <span key={tag.id} className="filter-chip active">
+                {tag.name} ({state.tagLinks.filter((l) => l.tagId === tag.id).length})
+              </span>
+            ))}
+          </div>
+        </section>
+        <section>
+          <h3><NotebookPen size={16} />Recent notes ({state.notes.length})</h3>
+          {state.notes.map((note) => (
+            <button className="knowledge-item note" type="button" key={note.id} onClick={() => onOpen(note)}>
+              <span>{note.body}</span><small>{note.title}{isAvailable(note) ? '' : ' · unavailable'}</small>
+            </button>
+          ))}
+          {!state.notes.length ? <p className="empty-note">Attach implementation context where it belongs.</p> : null}
+        </section>
       </div>
     </section>
   );
@@ -2081,6 +2413,39 @@ export default function App() {
   const [showHidden, setShowHidden] = useState(false);
   const [lightboxAsset, setLightboxAsset] = useState<ArchiveAsset | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [activeTypography, setActiveTypography] = useState<TypographyOption>(() => {
+    try {
+      const stored = window.localStorage.getItem('chatArchive.typography') as TypographyOption | null;
+      if (stored === 'ibm-plex' || stored === 'inter' || stored === 'source-sans') return stored;
+    } catch {}
+    return 'ibm-plex';
+  });
+  const [selectedTargets, setSelectedTargets] = useState<KnowledgeTarget[]>([]);
+  const [matrixViewMode, setMatrixViewMode] = useState<'docked' | 'expanded' | 'fullscreen' | 'minimized'>('docked');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-typography', activeTypography);
+    try {
+      window.localStorage.setItem('chatArchive.typography', activeTypography);
+    } catch {}
+  }, [activeTypography]);
+
+  function toggleTargetSelection(target: KnowledgeTarget) {
+    const key = targetKey(target);
+    setSelectedTargets((prev) => {
+      const exists = prev.some((item) => targetKey(item) === key);
+      if (exists) return prev.filter((item) => targetKey(item) !== key);
+      return [...prev, target];
+    });
+  }
+
+  function handleBatchSelectVisible(items: KnowledgeTarget[]) {
+    setSelectedTargets((prev) => {
+      const existingKeys = new Set(prev.map(targetKey));
+      const additions = items.filter((item) => !existingKeys.has(targetKey(item)));
+      return [...prev, ...additions];
+    });
+  }
   const mainRef = useRef<HTMLElement>(null);
   const saveScrollTimer = useRef<number | null>(null);
   const pendingMessageId = useRef<string | null>(null);
@@ -2540,6 +2905,8 @@ export default function App() {
           onPin={() => mutateConversationRecord('pinned')}
           onRead={toggleRead}
           onOrganize={() => selected && setOrganizerTarget({ targetType: 'conversation', targetId: selected.id, conversationId: selected.id, title: selected.title })}
+          activeTypography={activeTypography}
+          onChangeTypography={setActiveTypography}
         />
         <div className="archive-status">
           <span>{index.sourcePath}</span>
@@ -2569,13 +2936,49 @@ export default function App() {
             <div className="conversation-loading">Loading conversation...</div>
           )
         ) : activeView === 'code' ? (
-          <CodeExplorer artifacts={codeArtifacts} onOpenSource={openArtifactSource} onOrganize={setOrganizerTarget} />
+          <CodeExplorer
+            artifacts={codeArtifacts}
+            onOpenSource={openArtifactSource}
+            onOrganize={setOrganizerTarget}
+            selectedTargets={selectedTargets}
+            onToggleSelectTarget={toggleTargetSelection}
+            onSelectAllVisible={handleBatchSelectVisible}
+            onClearSelection={() => setSelectedTargets([])}
+          />
         ) : activeView === 'documents' ? (
-          <DocumentExplorer artifacts={documentArtifacts} onOpenSource={openArtifactSource} onOrganize={setOrganizerTarget} />
+          <DocumentExplorer
+            artifacts={documentArtifacts}
+            onOpenSource={openArtifactSource}
+            onOrganize={setOrganizerTarget}
+            selectedTargets={selectedTargets}
+            onToggleSelectTarget={toggleTargetSelection}
+            onSelectAllVisible={handleBatchSelectVisible}
+            onClearSelection={() => setSelectedTargets([])}
+          />
         ) : activeView === 'assets' ? (
-          <AssetExplorer artifacts={assetArtifacts} onOpenSource={openArtifactSource} onOpenAsset={setLightboxAsset} onOrganize={setOrganizerTarget} />
+          <AssetExplorer
+            artifacts={assetArtifacts}
+            onOpenSource={openArtifactSource}
+            onOpenAsset={setLightboxAsset}
+            onOrganize={setOrganizerTarget}
+            selectedTargets={selectedTargets}
+            onToggleSelectTarget={toggleTargetSelection}
+            onSelectAllVisible={handleBatchSelectVisible}
+            onClearSelection={() => setSelectedTargets([])}
+          />
         ) : activeView === 'knowledge' ? (
-          <KnowledgeView state={knowledgeState} onOpen={setOrganizerTarget} index={index} artifacts={artifacts} />
+          <KnowledgeView
+            state={knowledgeState}
+            onOpen={setOrganizerTarget}
+            index={index}
+            artifacts={artifacts}
+            onApplyKnowledgeState={applyKnowledgeState}
+            selectedTargets={selectedTargets}
+            onSelectTargets={setSelectedTargets}
+            onClearSelection={() => setSelectedTargets([])}
+            activeTypography={activeTypography}
+            onChangeTypography={setActiveTypography}
+          />
         ) : activeView === 'projects' ? (
           <ProjectIntelligenceView state={projectState} index={index} busy={projectBusy} onScan={() => void scanProjectCandidates()} onConfirm={(candidateId) => void mutateProject(() => confirmProjectCandidate(candidateId))} onDismiss={(candidateId) => void mutateProject(() => dismissProjectCandidate(candidateId))} onAdd={(projectId, conversationId) => void mutateProject(() => addProjectConversation(projectId, conversationId))} onRemove={(projectId, conversationId) => void mutateProject(() => removeProjectConversation(projectId, conversationId))} onOpenConversation={(conversationId) => {
             const target = index.conversations.find((item) => item.id === conversationId);
@@ -2592,6 +2995,34 @@ export default function App() {
         ) : (
           <Dashboard index={index} artifacts={artifacts} viewerState={viewerState} onSelect={openConversation} />
         )}
+        {/* Sweeping Bottom Section: Dual-List Relation Matrix Command Center */}
+        {activeView !== 'knowledge' ? (
+          <DualListRelationMatrix
+            knowledgeState={knowledgeState}
+            onApplyKnowledgeState={applyKnowledgeState}
+            selectedTargets={selectedTargets}
+            onSelectTargets={setSelectedTargets}
+            onClearSelection={() => setSelectedTargets([])}
+            onOpenTarget={(target) => {
+              if (target.targetType === 'conversation') {
+                const conv = index.conversations.find((c) => c.id === target.targetId || c.id === target.conversationId);
+                if (conv) openConversation(conv);
+              } else if (target.targetType === 'code') {
+                setActiveView('code');
+              } else if (target.targetType === 'document') {
+                setActiveView('documents');
+              } else if (target.targetType === 'asset') {
+                setActiveView('assets');
+              }
+            }}
+            artifacts={artifacts}
+            index={index}
+            activeTypography={activeTypography}
+            onChangeTypography={setActiveTypography}
+            viewMode={matrixViewMode}
+            onChangeViewMode={setMatrixViewMode}
+          />
+        ) : null}
       </main>
       <RightRail index={index} messages={displayedMessages} bookmarks={allBookmarks} onSelectBookmark={selectBookmark} />
       <Lightbox asset={lightboxAsset} onClose={() => setLightboxAsset(null)} />

@@ -1,0 +1,13 @@
+{
+  "sha256": "e392285f4c5d9b7fd8165f45f15a4c8ab1890ca4620cdf98477304e317fd1df3",
+  "original_dimensions": [
+    1254,
+    1254
+  ],
+  "normalization": "ImageMagick ICC-aware sRGB, first frame, auto orientation, 8-bit export",
+  "visible_pixels": 1572516,
+  "sampled_pixels": 65536,
+  "unique_sample_colors": 17810,
+  "alpha": "Fully transparent excluded; partial opacity weights population",
+  "seed": 32
+}
