@@ -64,8 +64,11 @@ import type {
   SearchFieldScope,
   SearchFilters,
   ViewerState,
+  KnowledgeCollection,
   KnowledgeState,
   KnowledgeTarget,
+  ExternalFileStatus,
+  ExportPreviewSummary,
   ProjectState,
   ProjectCandidate,
 } from './types';
@@ -73,7 +76,9 @@ import {
   exportConversationMarkdown as exportConversationMarkdownDesktop,
   getLibraryStatus,
   importOpenAiExport,
+  importOpenAiExportByPath,
   importOpenAiExportFolder,
+  inspectExternalFiles,
   isTauriRuntime,
   loadArchiveIndex,
   loadArtifactIndex,
@@ -84,7 +89,10 @@ import {
   loadDocumentArtifactContent,
   loadConversation,
   markRead,
+  pickExternalFileReferences,
+  previewOpenAiExport,
   resolveArchiveAssetUrl,
+  revealExternalPath,
   exportCodeSnippet as exportCodeSnippetDesktop,
   exportDocumentMarkdown as exportDocumentMarkdownDesktop,
   exportRecoveryBundle,
@@ -106,6 +114,7 @@ import {
 import {
   assetDisplayName,
   assetFileExtension,
+  buildCollectionTimeline,
   classifyCodeArtifactKind,
   classifyLinkArtifactKind,
   classifyUnresolvedAssetCause,
@@ -126,6 +135,8 @@ import {
   filterLinkArtifacts,
   findCodeRevisionsAndDuplicates,
   findDocumentRevisions,
+  findRelatedArchiveItems,
+  formatExternalFileBadge,
   isRecoveredDocumentArtifact,
   linkDisplayLabel,
   normalizeCodeLanguage,
@@ -1030,6 +1041,11 @@ function Sidebar({
   regexError,
   viewerState,
   savedSearches,
+  collections,
+  activeCollectionFilter = 'all',
+  onCollectionFilterChange,
+  compactDensity = false,
+  onToggleDensity,
   artifactSearchData,
   collapsed,
   onFilters,
@@ -1055,6 +1071,11 @@ function Sidebar({
   regexError: string;
   viewerState: ViewerState;
   savedSearches?: SavedSearch[];
+  collections?: KnowledgeCollection[];
+  activeCollectionFilter?: string;
+  onCollectionFilterChange?: (filter: string) => void;
+  compactDensity?: boolean;
+  onToggleDensity?: () => void;
   artifactSearchData?: ArtifactSearchData | null;
   collapsed: boolean;
   onFilters: (filters: SearchFilters) => void;
@@ -1075,7 +1096,7 @@ function Sidebar({
   function updateFilter<K extends keyof SearchFilters>(key: K, value: SearchFilters[K]) {
     onFilters({ ...filters, [key]: value });
   }
-  const activeFilters = hasActiveSearchFilters(filters);
+  const activeFilters = hasActiveSearchFilters(filters) || activeCollectionFilter !== 'all';
 
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
@@ -1270,11 +1291,124 @@ function Sidebar({
               />
             </label>
           </div>
+          {onCollectionFilterChange ? (
+            <div className="filter-row split" style={{ gap: 6 }}>
+              <select
+                value={activeCollectionFilter}
+                onChange={(e) => onCollectionFilterChange(e.target.value)}
+                aria-label="Filter conversations by collection"
+                style={{
+                  flex: 1,
+                  height: 26,
+                  fontSize: 11,
+                  padding: '2px 6px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-elevated)',
+                  color: 'var(--text)',
+                }}
+              >
+                <option value="all">All conversations (any collection)</option>
+                <option value="favorites">★ Starred / Favorited</option>
+                {(collections || []).map((coll) => (
+                  <option key={coll.id} value={String(coll.id)}>
+                    📁 {coll.name}
+                  </option>
+                ))}
+              </select>
+              {onToggleDensity ? (
+                <button
+                  type="button"
+                  className={compactDensity ? 'filter-chip active' : 'filter-chip'}
+                  onClick={onToggleDensity}
+                  title="Toggle compact conversation list density"
+                >
+                  {compactDensity ? 'Compact' : 'Comfort'}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <div className="side-stats">
             <span>{index.totals.copiedAssets.toLocaleString()} copied assets</span>
             <span>{Object.keys(viewerState.pinned).length.toLocaleString()} pinned</span>
           </div>
           <nav className="conversation-list">
+            {conversations.length === 0 ? (
+              <div
+                style={{
+                  padding: '14px 12px',
+                  margin: '8px 4px',
+                  borderRadius: 8,
+                  border: '1px dashed var(--border)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8,
+                  fontSize: 12,
+                }}
+              >
+                <strong>No conversations match current filters</strong>
+                <span style={{ color: 'var(--muted)', fontSize: 11 }}>
+                  Try a 1-click query relaxation or check an artifact explorer:
+                </span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {filters.fieldScope !== 'all' ? (
+                    <button
+                      type="button"
+                      className="filter-chip active"
+                      onClick={() => updateFilter('fieldScope', 'all')}
+                    >
+                      Search all fields (was {filters.fieldScope})
+                    </button>
+                  ) : null}
+                  {filters.regex ? (
+                    <button
+                      type="button"
+                      className="filter-chip active"
+                      onClick={() => updateFilter('regex', false)}
+                    >
+                      Disable Regex
+                    </button>
+                  ) : null}
+                  {filters.startDate || filters.endDate ? (
+                    <button
+                      type="button"
+                      className="filter-chip active"
+                      onClick={() => onFilters({ ...filters, startDate: '', endDate: '' })}
+                    >
+                      Clear date range
+                    </button>
+                  ) : null}
+                  {filters.minMessages || filters.maxMessages ? (
+                    <button
+                      type="button"
+                      className="filter-chip active"
+                      onClick={() => onFilters({ ...filters, minMessages: '', maxMessages: '' })}
+                    >
+                      Clear message count bounds
+                    </button>
+                  ) : null}
+                  {activeCollectionFilter !== 'all' && onCollectionFilterChange ? (
+                    <button
+                      type="button"
+                      className="filter-chip active"
+                      onClick={() => onCollectionFilterChange('all')}
+                    >
+                      Include all collections
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="filter-chip"
+                    onClick={() => {
+                      onFilters(DEFAULT_FILTERS);
+                      onCollectionFilterChange?.('all');
+                    }}
+                  >
+                    Reset all filters
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {groupConversations(conversations).map(([month, grouped]) => (
               <section className="month-group" key={month}>
                 <h2>{month}</h2>
@@ -1288,17 +1422,20 @@ function Sidebar({
                       type="button"
                       key={conversation.id}
                       onClick={() => onSelect(conversation)}
+                      style={compactDensity ? { padding: '5px 8px', gap: 2 } : undefined}
                     >
                       <span>
                         {viewerState.pinned[conversation.id] ? <Pin size={12} /> : null}
                         {viewerState.favorites[conversation.id] ? <Star size={12} /> : null}
                         {conversation.title}
                       </span>
-                      <small>
-                        {formatDate(getConversationTime(conversation), { month: 'short', day: 'numeric' })}
-                        {conversation.codeBlockCount ? ` - ${conversation.codeBlockCount} code` : ''}
-                        {conversation.assetCount ? ` - ${conversation.assetCount} media` : ''}
-                      </small>
+                      {!compactDensity ? (
+                        <small>
+                          {formatDate(getConversationTime(conversation), { month: 'short', day: 'numeric' })}
+                          {conversation.codeBlockCount ? ` - ${conversation.codeBlockCount} code` : ''}
+                          {conversation.assetCount ? ` - ${conversation.assetCount} media` : ''}
+                        </small>
+                      ) : null}
                       {matchReason ? (
                         <small style={{ color: 'var(--accent)', display: 'block', marginTop: 2 }}>
                           {matchReason}
@@ -3241,6 +3378,9 @@ function KnowledgeView({
   onOpenSource,
   onOrganize,
   onExportBundle,
+  externalStatuses,
+  onLinkExternalFiles,
+  onRevealExternalPath,
   index,
   artifacts,
   onApplyKnowledgeState,
@@ -3255,6 +3395,9 @@ function KnowledgeView({
   onOpenSource?: (target: KnowledgeTarget) => void;
   onOrganize?: (target: KnowledgeTarget) => void;
   onExportBundle?: (bundleName: string, targets: KnowledgeTarget[], chooseDirectory?: boolean) => void;
+  externalStatuses?: Record<string, ExternalFileStatus>;
+  onLinkExternalFiles?: (directory?: boolean, targetCollectionId?: number) => void;
+  onRevealExternalPath?: (path: string) => void;
   index: ArchiveIndex;
   artifacts: ArtifactIndex | null;
   onApplyKnowledgeState: (state: KnowledgeState) => void;
@@ -3264,13 +3407,33 @@ function KnowledgeView({
   activeTypography: TypographyOption;
   onChangeTypography: (opt: TypographyOption) => void;
 }) {
+  const [timelineScopeId, setTimelineScopeId] = useState<string>('all');
   const targets = new Map<string, KnowledgeTarget>();
   [...state.favorites, ...state.notes, ...state.collectionItems, ...state.tagLinks].forEach((item) => targets.set(targetKey(item), item));
   const isAvailable = (item: KnowledgeTarget) => {
+    if (item.targetType === 'external_file') {
+      return formatExternalFileBadge(externalStatuses?.[item.targetId]).available;
+    }
     if (item.targetType === 'conversation') return index.conversations.some((conversation) => conversation.id === item.targetId);
     return (artifacts?.[item.targetType === 'code' ? 'code' : item.targetType === 'document' ? 'documents' : item.targetType === 'asset' ? 'assets' : 'links'] || []).some((artifact) => artifact.id === item.targetId);
   };
   const targetLabel = (item: KnowledgeTarget) => `${item.targetType}${isAvailable(item) ? '' : ' · unavailable'}`;
+
+  const scopedItems = useMemo(() => {
+    if (timelineScopeId === 'all') return state.collectionItems;
+    const numId = Number(timelineScopeId);
+    return state.collectionItems.filter((item) => item.collectionId === numId);
+  }, [state.collectionItems, timelineScopeId]);
+
+  const timelineEvents = useMemo(
+    () => buildCollectionTimeline(scopedItems, index, artifacts, state.customTitles).slice(0, 40),
+    [scopedItems, index, artifacts, state.customTitles],
+  );
+
+  const relatedSuggestions = useMemo(
+    () => findRelatedArchiveItems(scopedItems, `coll:${timelineScopeId}`, state, index, artifacts),
+    [scopedItems, timelineScopeId, state, index, artifacts],
+  );
 
   return (
     <section className="explorer knowledge-view" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -3299,12 +3462,163 @@ function KnowledgeView({
         onOpenTargetSource={onOpenSource}
         onOrganizeTarget={onOrganize}
         onExportBundle={onExportBundle}
+        externalStatuses={externalStatuses}
+        onLinkExternalFiles={onLinkExternalFiles}
+        onRevealExternalPath={onRevealExternalPath}
         artifacts={artifacts}
         index={index}
         activeTypography={activeTypography}
         onChangeTypography={onChangeTypography}
         viewMode="expanded"
       />
+
+      {/* Evidence-Based Chronology Timeline & Transparent "Why Related?" Rediscovery */}
+      <div className="knowledge-columns" style={{ marginTop: 8 }}>
+        <section style={{ gridColumn: 'span 2' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <h3 style={{ margin: 0 }}>
+              <CalendarDays size={16} />
+              Substantive Chronology ({timelineEvents.length})
+            </h3>
+            <select
+              value={timelineScopeId}
+              onChange={(e) => setTimelineScopeId(e.target.value)}
+              aria-label="Timeline collection scope"
+              style={{
+                height: 26,
+                fontSize: 11,
+                padding: '2px 8px',
+                borderRadius: 6,
+                border: '1px solid var(--border)',
+                background: 'var(--bg-elevated)',
+                color: 'var(--text)',
+              }}
+            >
+              <option value="all">All collections ({state.collectionItems.length} items)</option>
+              {state.collections.map((coll) => (
+                <option key={coll.id} value={String(coll.id)}>
+                  📁 {coll.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {timelineEvents.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
+              {timelineEvents.map((ev) => (
+                <div
+                  key={ev.id}
+                  className="knowledge-item"
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onOpen(ev.target)}
+                    style={{
+                      background: 'transparent',
+                      border: 0,
+                      padding: 0,
+                      color: 'inherit',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      flex: 1,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="filter-chip active" style={{ fontSize: 10, padding: '1px 6px' }}>
+                        {ev.badge}
+                      </span>
+                      <strong>{ev.title}</strong>
+                    </div>
+                    <small style={{ display: 'block', marginTop: 2 }}>{ev.subtitle}</small>
+                  </button>
+                  <small style={{ whiteSpace: 'nowrap' }}>
+                    {ev.timestampMs ? new Date(ev.timestampMs).toLocaleDateString() : 'Undated'}
+                  </small>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-note">Add conversations or artifacts to a collection to inspect their chronological timeline and revision events.</p>
+          )}
+        </section>
+
+        <section>
+          <h3>
+            <Search size={16} />
+            Why Related? ({relatedSuggestions.length})
+          </h3>
+          {relatedSuggestions.length > 0 ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
+              {relatedSuggestions.map((sug) => (
+                <div key={sug.relationKey} className="knowledge-item" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() => onOpen(sug.target)}
+                      style={{
+                        background: 'transparent',
+                        border: 0,
+                        padding: 0,
+                        color: 'inherit',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {sug.target.title}
+                    </button>
+                    <div style={{ display: 'inline-flex', gap: 4 }}>
+                      <button
+                        type="button"
+                        className="filter-chip active"
+                        style={{ fontSize: 10, padding: '1px 6px' }}
+                        onClick={() => {
+                          const targetCollId =
+                            timelineScopeId !== 'all'
+                              ? Number(timelineScopeId)
+                              : state.collections[0]?.id;
+                          if (!targetCollId) return;
+                          onApplyKnowledgeState({
+                            ...state,
+                            collectionItems: [
+                              ...state.collectionItems,
+                              { ...sug.target, collectionId: targetCollId, createdAt: Date.now() },
+                            ],
+                          });
+                        }}
+                        title="Add related item to collection"
+                      >
+                        + Add
+                      </button>
+                      <button
+                        type="button"
+                        className="filter-chip"
+                        style={{ fontSize: 10, padding: '1px 6px' }}
+                        onClick={() => {
+                          onApplyKnowledgeState({
+                            ...state,
+                            dismissedRelations: [
+                              ...(state.dismissedRelations || []),
+                              sug.relationKey,
+                            ],
+                          });
+                        }}
+                        title="Dismiss this suggestion permanently"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                  <small style={{ color: 'var(--accent)' }}>{sug.reasons.join(' · ')}</small>
+                  <small>{sug.conversationTitle}</small>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-note">No unreviewed related code revisions, shared tags, or sibling documents for this scope.</p>
+          )}
+        </section>
+      </div>
 
       {/* Dedicated Metadata Tags, Favorites, and Notes */}
       <div className="knowledge-columns" style={{ marginTop: 8 }}>
@@ -3387,12 +3701,20 @@ function LibraryView({
   status,
   busy,
   message,
+  preview,
+  onPreview,
+  onConfirmPreviewImport,
+  onDismissPreview,
   onImport,
   onRestore,
 }: {
   status: LibraryStatus | null;
   busy: boolean;
   message: string;
+  preview?: ExportPreviewSummary | null;
+  onPreview?: () => void;
+  onConfirmPreviewImport?: (sourcePath: string) => void;
+  onDismissPreview?: () => void;
   onImport: () => void;
   onRestore: () => void;
 }) {
@@ -3409,12 +3731,87 @@ function LibraryView({
           <Stat label="Copied assets" value={(index?.totals.copiedAssets || 0).toLocaleString()} />
         </div>
         <div className="setup-actions">
+          {onPreview ? (
+            <button className="toolbar-button" type="button" disabled={busy || !status?.configured} onClick={onPreview}>
+              <Eye size={16} />
+              {busy ? 'Checking…' : 'Preview export (dry run)'}
+            </button>
+          ) : null}
           <button className="toolbar-button active" type="button" disabled={busy || !status?.configured} onClick={onImport}>
             <Download size={16} />
             {busy ? 'Importing…' : 'Import newer OpenAI export'}
           </button>
           {status?.hasRollback ? <button className="toolbar-button" type="button" disabled={busy} onClick={onRestore}>Restore previous import</button> : null}
         </div>
+        {preview ? (
+          <div
+            style={{
+              marginTop: 14,
+              padding: 14,
+              borderRadius: 10,
+              border: '1px solid var(--border)',
+              background: 'var(--bg-elevated)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <div>
+                <strong>Export Refresh Dry-Run Preview</strong>
+                <small style={{ display: 'block', color: 'var(--muted)' }}>{preview.sourcePath}</small>
+              </div>
+              {onDismissPreview ? (
+                <button className="icon-only" type="button" onClick={onDismissPreview} title="Close preview">
+                  <X size={16} />
+                </button>
+              ) : null}
+            </div>
+            <div className="knowledge-summary">
+              <Stat label="In export" value={preview.totalConversations.toLocaleString()} />
+              <Stat label="New chats" value={`+${preview.newConversations.toLocaleString()}`} />
+              <Stat label="Updated chats" value={preview.updatedConversations.toLocaleString()} />
+              <Stat label="Unchanged" value={preview.unchangedConversations.toLocaleString()} />
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12 }}>
+              <span>
+                <strong>Preserved curated items:</strong> {preview.preservedCuratedItems.toLocaleString()}
+              </span>
+              <span>
+                <strong>Marked unavailable:</strong> {preview.unavailableCuratedItems.toLocaleString()}
+              </span>
+              <span>
+                <strong>Omitted from export:</strong> {preview.omittedConversations.toLocaleString()}
+              </span>
+              <span>
+                <strong>Asset files in zip:</strong> {preview.sourceAssetFiles.toLocaleString()}
+              </span>
+            </div>
+            {preview.sampleNewTitles.length > 0 ? (
+              <small style={{ color: 'var(--muted)' }}>
+                <strong>Sample new conversations:</strong> {preview.sampleNewTitles.join(' · ')}
+              </small>
+            ) : null}
+            {preview.sampleUpdatedTitles.length > 0 ? (
+              <small style={{ color: 'var(--muted)' }}>
+                <strong>Sample updated conversations:</strong> {preview.sampleUpdatedTitles.join(' · ')}
+              </small>
+            ) : null}
+            {onConfirmPreviewImport ? (
+              <div className="setup-actions">
+                <button
+                  className="toolbar-button active"
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onConfirmPreviewImport(preview.sourcePath)}
+                >
+                  <Check size={16} />
+                  Confirm &amp; import this export
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <p className="setup-message">A new export refreshes the archive while retaining saved organization. Items no longer in the export stay saved as unavailable.</p>
         {message ? <p className="setup-message" role="status">{message}</p> : null}
       </div>
@@ -3538,6 +3935,30 @@ export default function App() {
   const [returnView, setReturnView] = useState<AppView | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [focusedArtifactId, setFocusedArtifactId] = useState<{ code?: string; document?: string; asset?: string; link?: string }>({});
+  const [activeCollectionFilter, setActiveCollectionFilter] = useState<string>('all');
+  const [compactDensity, setCompactDensity] = useState<boolean>(false);
+  const [exportPreview, setExportPreview] = useState<ExportPreviewSummary | null>(null);
+  const [externalStatuses, setExternalStatuses] = useState<Record<string, ExternalFileStatus>>({});
+
+  useEffect(() => {
+    const extPaths = Array.from(
+      new Set(
+        [...knowledgeState.collectionItems, ...knowledgeState.favorites, ...selectedTargets]
+          .filter((item) => item.targetType === 'external_file')
+          .map((item) => item.targetId),
+      ),
+    );
+    if (!extPaths.length || !isTauriRuntime()) return;
+    inspectExternalFiles(extPaths)
+      .then((statuses) => {
+        const next: Record<string, ExternalFileStatus> = {};
+        for (const st of statuses) {
+          next[st.path] = st;
+        }
+        setExternalStatuses(next);
+      })
+      .catch((err) => console.error('Could not inspect external file references', err));
+  }, [knowledgeState.collectionItems, knowledgeState.favorites, selectedTargets]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-typography', activeTypography);
@@ -3697,8 +4118,29 @@ export default function App() {
 
   const filtered = useMemo(() => {
     if (!index) return { conversations: [], regexError: '' };
-    return filterConversations(index.conversations, filters, viewerState.pinned, artifactSearchData);
-  }, [artifactSearchData, filters, index, viewerState.pinned]);
+    const base = filterConversations(index.conversations, filters, viewerState.pinned, artifactSearchData);
+    if (activeCollectionFilter === 'all') return base;
+    if (activeCollectionFilter === 'favorites') {
+      const favIds = new Set([
+        ...Object.keys(viewerState.favorites),
+        ...knowledgeState.favorites.map((f) => f.conversationId || f.targetId),
+      ]);
+      return {
+        ...base,
+        conversations: base.conversations.filter((c) => favIds.has(c.id)),
+      };
+    }
+    const collId = Number(activeCollectionFilter);
+    const collConvIds = new Set(
+      knowledgeState.collectionItems
+        .filter((item) => item.collectionId === collId)
+        .map((item) => (item.targetType === 'conversation' ? item.targetId : item.conversationId)),
+    );
+    return {
+      ...base,
+      conversations: base.conversations.filter((c) => collConvIds.has(c.id)),
+    };
+  }, [activeCollectionFilter, artifactSearchData, filters, index, knowledgeState.collectionItems, knowledgeState.favorites, viewerState.favorites, viewerState.pinned]);
 
   const messages = useMemo(() => getVisibleMessages(conversation, showHidden), [conversation, showHidden]);
   const displayedMessages = useMemo(() => filterMessagesForAssetSearch(messages, filters), [filters, messages]);
@@ -3997,6 +4439,69 @@ export default function App() {
     }
   }
 
+  async function handlePreviewExport() {
+    setLibraryBusy(true);
+    setLibraryMessage('Running dry-run export check...');
+    try {
+      const preview = await previewOpenAiExport();
+      if (preview) {
+        setExportPreview(preview);
+        setLibraryMessage(
+          `Dry-run complete: ${preview.newConversations} new, ${preview.updatedConversations} updated, ${preview.unchangedConversations} unchanged conversations.`,
+        );
+      } else {
+        setLibraryMessage('');
+      }
+    } catch (err) {
+      setLibraryMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLibraryBusy(false);
+    }
+  }
+
+  async function handleConfirmPreviewImport(sourcePath: string) {
+    setExportPreview(null);
+    await finishOpenAiImport((libPath) => importOpenAiExportByPath(sourcePath, libPath));
+  }
+
+  async function handleLinkExternalFiles(directory = false, targetCollectionId?: number) {
+    try {
+      const picked = await pickExternalFileReferences(directory);
+      if (!picked.length) return;
+      if (targetCollectionId) {
+        const existingKeys = new Set(
+          knowledgeState.collectionItems
+            .filter((item) => item.collectionId === targetCollectionId)
+            .map(targetKey),
+        );
+        const now = Date.now();
+        const additions = picked
+          .filter((item) => !existingKeys.has(targetKey(item)))
+          .map((item) => ({ ...item, collectionId: targetCollectionId, createdAt: now }));
+        if (additions.length) {
+          applyKnowledgeState({
+            ...knowledgeState,
+            collectionItems: [...knowledgeState.collectionItems, ...additions],
+          });
+          setLibraryMessage(`Referenced ${additions.length} external local item(s) in collection.`);
+        }
+      } else {
+        handleBatchSelectVisible(picked);
+        setLibraryMessage(`Staged ${picked.length} external local reference(s) in Batch Ingestion.`);
+      }
+    } catch (err) {
+      setLibraryMessage(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleRevealExternalPath(path: string) {
+    try {
+      await revealExternalPath(path, true);
+    } catch (err) {
+      setLibraryMessage(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   const returnViewLabel =
     returnView === 'code'
       ? 'Back to Code Explorer'
@@ -4083,6 +4588,11 @@ export default function App() {
         regexError={filtered.regexError}
         viewerState={viewerState}
         savedSearches={knowledgeState.savedSearches}
+        collections={knowledgeState.collections}
+        activeCollectionFilter={activeCollectionFilter}
+        onCollectionFilterChange={setActiveCollectionFilter}
+        compactDensity={compactDensity}
+        onToggleDensity={() => setCompactDensity((v) => !v)}
         artifactSearchData={artifactSearchData}
         onFilters={setFilters}
         onSaveSearch={(currentFilters) => {
@@ -4297,6 +4807,9 @@ export default function App() {
             onOpenSource={openTargetSourceFromMatrix}
             onOrganize={setOrganizerTarget}
             onExportBundle={(bundleName, targets, chooseDirectory) => void handleExportBundle(bundleName, targets, chooseDirectory)}
+            externalStatuses={externalStatuses}
+            onLinkExternalFiles={(directory, targetCollId) => void handleLinkExternalFiles(directory, targetCollId)}
+            onRevealExternalPath={(p) => void handleRevealExternalPath(p)}
             index={index}
             artifacts={artifacts}
             onApplyKnowledgeState={applyKnowledgeState}
@@ -4320,6 +4833,10 @@ export default function App() {
             status={libraryStatus}
             busy={libraryBusy}
             message={libraryMessage}
+            preview={exportPreview}
+            onPreview={() => void handlePreviewExport()}
+            onConfirmPreviewImport={(sourcePath) => void handleConfirmPreviewImport(sourcePath)}
+            onDismissPreview={() => setExportPreview(null)}
             onImport={() => void finishOpenAiImport(importOpenAiExport)}
             onRestore={() => void restoreImport()}
           />
@@ -4342,6 +4859,9 @@ export default function App() {
             onOpenTargetSource={openTargetSourceFromMatrix}
             onOrganizeTarget={setOrganizerTarget}
             onExportBundle={(bundleName, targets, chooseDirectory) => void handleExportBundle(bundleName, targets, chooseDirectory)}
+            externalStatuses={externalStatuses}
+            onLinkExternalFiles={(directory, targetCollId) => void handleLinkExternalFiles(directory, targetCollId)}
+            onRevealExternalPath={(p) => void handleRevealExternalPath(p)}
             artifacts={artifacts}
             index={index}
             activeTypography={activeTypography}

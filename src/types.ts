@@ -112,7 +112,7 @@ export interface ViewerState {
   scrollPositions: Record<string, number>;
 }
 
-export type KnowledgeTargetType = 'conversation' | 'code' | 'document' | 'asset' | 'link';
+export type KnowledgeTargetType = 'conversation' | 'code' | 'document' | 'asset' | 'link' | 'external_file';
 
 export interface KnowledgeTarget {
   targetType: KnowledgeTargetType;
@@ -152,6 +152,7 @@ export interface KnowledgeState {
   customTitles?: Record<string, string>;
   savedSearches?: SavedSearch[];
   assetTriage?: Record<string, AssetTriageStatus>;
+  dismissedRelations?: string[];
 }
 
 export interface ProjectScanRun { id: number; scannedAt: number; candidateCount: number }
@@ -265,4 +266,28 @@ export interface RecoveryBundleSummary {
   exportedCount: number;
   skippedCount: number;
   items: RecoveryBundleItem[];
+}
+
+export interface ExternalFileStatus {
+  path: string;
+  exists: boolean;
+  isDir: boolean;
+  sizeBytes?: number | null;
+  extension: string;
+  modifiedIso?: string | null;
+  drivePresent: boolean;
+}
+
+export interface ExportPreviewSummary {
+  sourcePath: string;
+  totalConversations: number;
+  newConversations: number;
+  updatedConversations: number;
+  unchangedConversations: number;
+  omittedConversations: number;
+  sourceAssetFiles: number;
+  preservedCuratedItems: number;
+  unavailableCuratedItems: number;
+  sampleNewTitles: string[];
+  sampleUpdatedTitles: string[];
 }

@@ -40,6 +40,9 @@ fn main() {
             commands::save_scroll_position,
             commands::export_conversation_markdown,
             commands::export_recovery_bundle,
+            commands::preview_openai_export,
+            commands::inspect_external_files,
+            commands::reveal_external_path,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run ChatArchive");

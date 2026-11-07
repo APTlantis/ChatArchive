@@ -1,9 +1,15 @@
 import type {
+  ArchiveIndex,
+  ArtifactIndex,
   AssetArtifact,
   CodeArtifact,
   CodeArtifactCategory,
   DocumentArtifact,
   DocumentAvailabilityFilter,
+  ExternalFileStatus,
+  KnowledgeCollectionItem,
+  KnowledgeState,
+  KnowledgeTarget,
   LinkArtifact,
   LinkArtifactCategory,
 } from './types';
@@ -721,4 +727,360 @@ export function summarizeUnresolvedAssets(
     unreviewedMissing,
     acknowledgedMissing,
   };
+}
+
+export function formatExternalFileBadge(status?: ExternalFileStatus | null): {
+  label: string;
+  available: boolean;
+} {
+  if (!status) {
+    return { label: 'Local reference', available: true };
+  }
+  if (!status.drivePresent) {
+    return { label: 'Drive unplugged / offline', available: false };
+  }
+  if (!status.exists) {
+    return { label: 'Path missing on disk', available: false };
+  }
+  if (status.isDir) {
+    return { label: 'Folder available', available: true };
+  }
+  const size = status.sizeBytes ?? 0;
+  const sizeLabel =
+    size >= 1024 * 1024
+      ? `${(size / (1024 * 1024)).toFixed(1)} MB`
+      : size >= 1024
+        ? `${(size / 1024).toFixed(1)} KB`
+        : `${size} B`;
+  const ext = status.extension ? `.${status.extension}` : 'file';
+  return {
+    label: `Available · ${sizeLabel} · ${ext}`,
+    available: true,
+  };
+}
+
+export interface TimelineEvent {
+  id: string;
+  timestampMs: number;
+  eventKind: 'conversation_started' | 'artifact_created' | 'revision_detected' | 'external_linked';
+  badge: string;
+  title: string;
+  subtitle: string;
+  target: KnowledgeTarget;
+}
+
+export function buildCollectionTimeline(
+  items: KnowledgeCollectionItem[],
+  index: ArchiveIndex,
+  artifacts: ArtifactIndex | null,
+  customTitles?: Record<string, string>,
+): TimelineEvent[] {
+  const events: TimelineEvent[] = [];
+  const seenEventKeys = new Set<string>();
+  const resolveTitle = (t: KnowledgeTarget) =>
+    customTitles?.[`${t.targetType}:${t.targetId}`] || t.title;
+
+  const convMap = new Map(index.conversations.map((c) => [c.id, c]));
+  const codeMap = new Map((artifacts?.code || []).map((a) => [a.id, a]));
+  const docMap = new Map((artifacts?.documents || []).map((a) => [a.id, a]));
+  const assetMap = new Map((artifacts?.assets || []).map((a) => [a.id, a]));
+  const linkMap = new Map((artifacts?.links || []).map((a) => [a.id, a]));
+
+  for (const item of items) {
+    const key = `${item.targetType}:${item.targetId}`;
+    if (seenEventKeys.has(key)) continue;
+    seenEventKeys.add(key);
+
+    if (item.targetType === 'external_file') {
+      events.push({
+        id: `ext-${item.targetId}`,
+        timestampMs: item.createdAt || Date.now(),
+        eventKind: 'external_linked',
+        badge: 'External File',
+        title: resolveTitle(item),
+        subtitle: item.targetId,
+        target: item,
+      });
+      continue;
+    }
+
+    if (item.targetType === 'conversation') {
+      const conv = convMap.get(item.targetId);
+      const ts = conv?.createTime ? conv.createTime * 1000 : item.createdAt || 0;
+      events.push({
+        id: `conv-${item.targetId}`,
+        timestampMs: ts,
+        eventKind: 'conversation_started',
+        badge: 'Conversation',
+        title: resolveTitle(item),
+        subtitle: conv ? `${conv.messageCount} messages · ${conv.codeBlockCount} code blocks` : 'Conversation',
+        target: item,
+      });
+      continue;
+    }
+
+    if (item.targetType === 'code') {
+      const code = codeMap.get(item.targetId);
+      const ts = code?.createTime ? code.createTime * 1000 : item.createdAt || 0;
+      const smartTitle = code ? deriveCodeArtifactTitle(code) : item.title;
+      events.push({
+        id: `code-${item.targetId}`,
+        timestampMs: ts,
+        eventKind: 'artifact_created',
+        badge: code ? `Code · ${normalizeCodeLanguage(code)}` : 'Code',
+        title: customTitles?.[key] || smartTitle,
+        subtitle: code ? `In "${code.conversationTitle}"` : item.conversationId,
+        target: { ...item, title: customTitles?.[key] || smartTitle },
+      });
+      if (code && artifacts?.code) {
+        const { revisions } = findCodeRevisionsAndDuplicates(code, artifacts.code);
+        for (const rev of revisions.slice(0, 2)) {
+          const revKey = `rev:code:${rev.id}`;
+          if (seenEventKeys.has(revKey)) continue;
+          seenEventKeys.add(revKey);
+          events.push({
+            id: revKey,
+            timestampMs: rev.createTime ? rev.createTime * 1000 : ts,
+            eventKind: 'revision_detected',
+            badge: 'Code Revision Candidate',
+            title: `${deriveCodeArtifactTitle(rev)}`,
+            subtitle: `Related version in "${rev.conversationTitle}"`,
+            target: {
+              targetType: 'code',
+              targetId: rev.id,
+              conversationId: rev.conversationId,
+              title: deriveCodeArtifactTitle(rev),
+            },
+          });
+        }
+      }
+      continue;
+    }
+
+    if (item.targetType === 'document') {
+      const doc = docMap.get(item.targetId);
+      const ts = doc?.createTime ? doc.createTime * 1000 : item.createdAt || 0;
+      const smartTitle = doc ? deriveDocumentDisplayTitle(doc) : item.title;
+      events.push({
+        id: `doc-${item.targetId}`,
+        timestampMs: ts,
+        eventKind: 'artifact_created',
+        badge: doc ? `Doc · ${doc.documentType}` : 'Document',
+        title: customTitles?.[key] || smartTitle,
+        subtitle: doc ? `In "${doc.conversationTitle}"` : item.conversationId,
+        target: { ...item, title: customTitles?.[key] || smartTitle },
+      });
+      if (doc && artifacts?.documents) {
+        const revisions = findDocumentRevisions(doc, artifacts.documents);
+        for (const rev of revisions.slice(0, 2)) {
+          const revKey = `rev:doc:${rev.id}`;
+          if (seenEventKeys.has(revKey)) continue;
+          seenEventKeys.add(revKey);
+          events.push({
+            id: revKey,
+            timestampMs: rev.createTime ? rev.createTime * 1000 : ts,
+            eventKind: 'revision_detected',
+            badge: 'Doc Revision Candidate',
+            title: deriveDocumentDisplayTitle(rev),
+            subtitle: `Related document in "${rev.conversationTitle}"`,
+            target: {
+              targetType: 'document',
+              targetId: rev.id,
+              conversationId: rev.conversationId,
+              title: deriveDocumentDisplayTitle(rev),
+            },
+          });
+        }
+      }
+      continue;
+    }
+
+    if (item.targetType === 'asset') {
+      const asset = assetMap.get(item.targetId);
+      const ts = asset?.createTime ? asset.createTime * 1000 : item.createdAt || 0;
+      events.push({
+        id: `asset-${item.targetId}`,
+        timestampMs: ts,
+        eventKind: 'artifact_created',
+        badge: asset ? `Asset · ${assetFileExtension(asset)}` : 'Asset',
+        title: customTitles?.[key] || (asset ? assetDisplayName(asset) : item.title),
+        subtitle: asset ? `In "${asset.conversationTitle}"` : item.conversationId,
+        target: item,
+      });
+      continue;
+    }
+
+    if (item.targetType === 'link') {
+      const link = linkMap.get(item.targetId);
+      const ts = link?.createTime ? link.createTime * 1000 : item.createdAt || 0;
+      events.push({
+        id: `link-${item.targetId}`,
+        timestampMs: ts,
+        eventKind: 'artifact_created',
+        badge: link ? `Link · ${normalizeLinkDomain(link) || 'url'}` : 'Link',
+        title: customTitles?.[key] || (link ? linkDisplayLabel(link) : item.title),
+        subtitle: link ? `In "${link.conversationTitle}"` : item.conversationId,
+        target: item,
+      });
+    }
+  }
+
+  return events.sort((a, b) => b.timestampMs - a.timestampMs);
+}
+
+export interface RelatedArchiveSuggestion {
+  relationKey: string;
+  target: KnowledgeTarget;
+  reasons: string[];
+  score: number;
+  conversationTitle: string;
+}
+
+export function findRelatedArchiveItems(
+  seedTargets: KnowledgeTarget[],
+  scopeKey: string,
+  state: KnowledgeState,
+  index: ArchiveIndex,
+  artifacts: ArtifactIndex | null,
+): RelatedArchiveSuggestion[] {
+  if (!seedTargets.length) return [];
+  const seedKeys = new Set(seedTargets.map((t) => `${t.targetType}:${t.targetId}`));
+  const dismissed = new Set(state.dismissedRelations || []);
+  const candidateMap = new Map<string, RelatedArchiveSuggestion>();
+
+  const addCandidate = (
+    target: KnowledgeTarget,
+    reason: string,
+    weight: number,
+    conversationTitle: string,
+  ) => {
+    const tKey = `${target.targetType}:${target.targetId}`;
+    if (seedKeys.has(tKey)) return;
+    const relationKey = `${scopeKey}::${tKey}`;
+    if (dismissed.has(relationKey)) return;
+
+    const existing = candidateMap.get(tKey);
+    if (existing) {
+      if (!existing.reasons.includes(reason)) {
+        existing.reasons.push(reason);
+      }
+      existing.score += weight;
+    } else {
+      candidateMap.set(tKey, {
+        relationKey,
+        target: {
+          ...target,
+          title: state.customTitles?.[tKey] || target.title,
+        },
+        reasons: [reason],
+        score: weight,
+        conversationTitle,
+      });
+    }
+  };
+
+  // 1. Shared user-applied tags
+  const seedTagIds = new Set<number>();
+  for (const link of state.tagLinks) {
+    if (seedKeys.has(`${link.targetType}:${link.targetId}`)) {
+      seedTagIds.add(link.tagId);
+    }
+  }
+  if (seedTagIds.size > 0) {
+    const tagNames = new Map(state.tags.map((t) => [t.id, t.name]));
+    for (const link of state.tagLinks) {
+      if (seedTagIds.has(link.tagId)) {
+        const tagName = tagNames.get(link.tagId) || `#${link.tagId}`;
+        const convTitle =
+          index.conversations.find((c) => c.id === link.conversationId)?.title || link.conversationId;
+        addCandidate(link, `Shared tag "${tagName}"`, 4, convTitle);
+      }
+    }
+  }
+
+  // 2. Code revisions & exact duplicates across conversations
+  if (artifacts?.code) {
+    const codeMap = new Map(artifacts.code.map((c) => [c.id, c]));
+    for (const seed of seedTargets) {
+      if (seed.targetType !== 'code') continue;
+      const codeObj = codeMap.get(seed.targetId);
+      if (!codeObj) continue;
+      const { exactDuplicates, revisions } = findCodeRevisionsAndDuplicates(codeObj, artifacts.code);
+      for (const dup of exactDuplicates.slice(0, 3)) {
+        addCandidate(
+          {
+            targetType: 'code',
+            targetId: dup.id,
+            conversationId: dup.conversationId,
+            title: deriveCodeArtifactTitle(dup),
+          },
+          `Identical code to "${deriveCodeArtifactTitle(codeObj)}"`,
+          5,
+          dup.conversationTitle,
+        );
+      }
+      for (const rev of revisions.slice(0, 4)) {
+        addCandidate(
+          {
+            targetType: 'code',
+            targetId: rev.id,
+            conversationId: rev.conversationId,
+            title: deriveCodeArtifactTitle(rev),
+          },
+          `Candidate revision of "${deriveCodeArtifactTitle(codeObj)}"`,
+          4,
+          rev.conversationTitle,
+        );
+      }
+    }
+  }
+
+  // 3. Document revisions across conversations
+  if (artifacts?.documents) {
+    const docMap = new Map(artifacts.documents.map((d) => [d.id, d]));
+    for (const seed of seedTargets) {
+      if (seed.targetType !== 'document') continue;
+      const docObj = docMap.get(seed.targetId);
+      if (!docObj) continue;
+      for (const rev of findDocumentRevisions(docObj, artifacts.documents).slice(0, 4)) {
+        addCandidate(
+          {
+            targetType: 'document',
+            targetId: rev.id,
+            conversationId: rev.conversationId,
+            title: deriveDocumentDisplayTitle(rev),
+          },
+          `Same document title "${docObj.title}"`,
+          4,
+          rev.conversationTitle,
+        );
+      }
+    }
+  }
+
+  // 4. Recovered documents & key code modules from the same source conversations
+  const seedConversationIds = new Set(
+    seedTargets.map((t) => t.conversationId).filter((id) => id && id !== 'external'),
+  );
+  if (seedConversationIds.size > 0 && artifacts) {
+    for (const doc of artifacts.documents) {
+      if (seedConversationIds.has(doc.conversationId) && isRecoveredDocumentArtifact(doc)) {
+        addCandidate(
+          {
+            targetType: 'document',
+            targetId: doc.id,
+            conversationId: doc.conversationId,
+            title: deriveDocumentDisplayTitle(doc),
+          },
+          `Recovered document in "${doc.conversationTitle}"`,
+          2,
+          doc.conversationTitle,
+        );
+      }
+    }
+  }
+
+  return Array.from(candidateMap.values())
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
 }

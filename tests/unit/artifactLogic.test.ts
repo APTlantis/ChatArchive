@@ -22,6 +22,9 @@ import {
   filterLinkArtifacts,
   findCodeRevisionsAndDuplicates,
   findDocumentRevisions,
+  findRelatedArchiveItems,
+  formatExternalFileBadge,
+  buildCollectionTimeline,
   isRecoveredDocumentArtifact,
   linkDisplayLabel,
   normalizeLinkDomain,
@@ -213,5 +216,110 @@ describe('artifact explorer logic', () => {
       unreviewedMissing: 1,
       acknowledgedMissing: 1,
     });
+  });
+
+  it('builds chronological timeline events, surfaces related items with reasons, and formats external file statuses', () => {
+    expect(
+      formatExternalFileBadge({
+        path: 'D:/DRS/config.toml',
+        exists: true,
+        isDir: false,
+        sizeBytes: 2048,
+        extension: 'toml',
+        drivePresent: true,
+      }),
+    ).toEqual({
+      label: 'Available · 2.0 KB · .toml',
+      available: true,
+    });
+
+    expect(
+      formatExternalFileBadge({
+        path: 'B:/Archive/logo.png',
+        exists: false,
+        isDir: false,
+        extension: 'png',
+        drivePresent: false,
+      }),
+    ).toEqual({
+      label: 'Drive unplugged / offline',
+      available: false,
+    });
+
+    const code1: CodeArtifact = {
+      ...base,
+      id: 'code-1',
+      type: 'code',
+      language: 'rust',
+      preview: '',
+      text: 'pub fn sync_archive() {\n  println!("v1");\n}',
+      createTime: 100,
+    };
+    const code2: CodeArtifact = {
+      ...base,
+      id: 'code-2',
+      conversationId: 'c2',
+      conversationTitle: 'Archive v2',
+      type: 'code',
+      language: 'rust',
+      preview: '',
+      text: 'pub fn sync_archive() {\n  println!("v2");\n}',
+      createTime: 200,
+    };
+
+    const mockIndex = {
+      generatedAt: '',
+      sourcePath: '',
+      totals: { conversations: 2, visibleMessages: 10, hiddenMessages: 0, codeBlocks: 2, copiedAssets: 0, missingAssets: 0, externalAssets: 0 },
+      conversations: [
+        { id: 'c1', title: 'Archive', slug: 'archive', createTime: 90, updateTime: 100, archived: false, starred: false, messageCount: 5, hiddenMessageCount: 0, codeBlockCount: 1, assetCount: 0, externalAssetCount: 0, snippet: '', searchText: '' },
+        { id: 'c2', title: 'Archive v2', slug: 'archive-v2', createTime: 190, updateTime: 200, archived: false, starred: false, messageCount: 5, hiddenMessageCount: 0, codeBlockCount: 1, assetCount: 0, externalAssetCount: 0, snippet: '', searchText: '' },
+      ],
+    };
+    const mockArtifacts = {
+      generatedAt: '',
+      sourcePath: '',
+      totals: { code: 2, assets: 0, documents: 0, links: 0 },
+      languageCounts: { rust: 2 },
+      code: [code1, code2],
+      assets: [],
+      documents: [],
+      links: [],
+    };
+
+    const collectionItems = [
+      {
+        collectionId: 1,
+        targetType: 'code' as const,
+        targetId: 'code-1',
+        conversationId: 'c1',
+        title: 'sync_archive (rust)',
+        createdAt: 1000,
+      },
+    ];
+
+    const timeline = buildCollectionTimeline(collectionItems, mockIndex, mockArtifacts);
+    expect(timeline.map((e) => e.eventKind)).toEqual(['revision_detected', 'artifact_created']);
+
+    const state = {
+      tags: [{ id: 1, name: 'sync' }],
+      collections: [{ id: 1, name: 'Core', createdAt: 1 }],
+      tagLinks: [],
+      collectionItems,
+      notes: [],
+      favorites: [],
+      dismissedRelations: [],
+    };
+
+    const related = findRelatedArchiveItems(collectionItems, 'coll:1', state, mockIndex, mockArtifacts);
+    expect(related).toHaveLength(1);
+    expect(related[0].target.targetId).toBe('code-2');
+    expect(related[0].reasons[0]).toContain('Candidate revision of "sync_archive (rust)"');
+
+    const dismissedState = {
+      ...state,
+      dismissedRelations: [related[0].relationKey],
+    };
+    expect(findRelatedArchiveItems(collectionItems, 'coll:1', dismissedState, mockIndex, mockArtifacts)).toHaveLength(0);
   });
 });

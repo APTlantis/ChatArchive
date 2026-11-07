@@ -1061,6 +1061,7 @@ pub fn load_knowledge_state(conn: &Connection) -> AppResult<KnowledgeState> {
     state.custom_titles = get_meta(conn, "knowledge_custom_titles")?.unwrap_or_default();
     state.saved_searches = get_meta(conn, "knowledge_saved_searches")?.unwrap_or_default();
     state.asset_triage = get_meta(conn, "knowledge_asset_triage")?.unwrap_or_default();
+    state.dismissed_relations = get_meta(conn, "knowledge_dismissed_relations")?.unwrap_or_default();
     Ok(state)
 }
 
@@ -1114,6 +1115,12 @@ pub fn replace_knowledge_state(
         "INSERT INTO app_meta(key, value) VALUES ('knowledge_asset_triage', ?1)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         params![json(&state.asset_triage)?],
+    )
+    .map_err(|err| err.to_string())?;
+    tx.execute(
+        "INSERT INTO app_meta(key, value) VALUES ('knowledge_dismissed_relations', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![json(&state.dismissed_relations)?],
     )
     .map_err(|err| err.to_string())?;
     tx.commit()

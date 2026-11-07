@@ -28,7 +28,9 @@ import type {
   KnowledgeTargetType,
   ArtifactIndex,
   ArchiveIndex,
+  ExternalFileStatus,
 } from './types';
+import { formatExternalFileBadge } from './artifactLogic';
 
 export type TypographyOption = 'ibm-plex' | 'inter' | 'source-sans';
 
@@ -60,6 +62,8 @@ export function getTargetPrefix(type: KnowledgeTargetType) {
       return '💬';
     case 'link':
       return '🔗';
+    case 'external_file':
+      return '📂';
     default:
       return '📌';
   }
@@ -79,6 +83,9 @@ export interface DualListRelationMatrixProps {
   onOpenTargetSource?: (target: KnowledgeTarget) => void;
   onOrganizeTarget?: (target: KnowledgeTarget) => void;
   onExportBundle?: (bundleName: string, targets: KnowledgeTarget[], chooseDirectory?: boolean) => void;
+  externalStatuses?: Record<string, ExternalFileStatus>;
+  onLinkExternalFiles?: (directory?: boolean, targetCollectionId?: number) => void;
+  onRevealExternalPath?: (path: string) => void;
   artifacts?: ArtifactIndex | null;
   index?: ArchiveIndex | null;
   activeTypography: TypographyOption;
@@ -97,6 +104,9 @@ export default function DualListRelationMatrix({
   onOpenTargetSource,
   onOrganizeTarget,
   onExportBundle,
+  externalStatuses,
+  onLinkExternalFiles,
+  onRevealExternalPath,
   activeTypography,
   onChangeTypography,
   viewMode = 'docked',
@@ -651,6 +661,18 @@ export default function DualListRelationMatrix({
                   <span>
                     <strong>{itemsInActiveCollection.length}</strong> pointers
                   </span>
+                  {onLinkExternalFiles && activeCollection ? (
+                    <button
+                      type="button"
+                      className="toolbar-button"
+                      onClick={() => onLinkExternalFiles(false, activeCollection.id)}
+                      title={`Reference an external local file in "${activeCollection.name}" without copying it`}
+                      style={{ padding: '1px 7px', fontSize: 10, minHeight: 22 }}
+                    >
+                      <Plus size={11} />
+                      Local File
+                    </button>
+                  ) : null}
                   {onExportBundle && activeCollection && itemsInActiveCollection.length > 0 ? (
                     <button
                       type="button"
@@ -689,7 +711,7 @@ export default function DualListRelationMatrix({
 
                 {/* Filter chips */}
                 <div style={{ display: 'flex', gap: 2 }}>
-                  {['all', 'asset', 'document', 'code', 'link', 'conversation'].map((type) => (
+                  {['all', 'asset', 'document', 'code', 'link', 'external_file', 'conversation'].map((type) => (
                     <button
                       key={type}
                       type="button"
@@ -701,7 +723,7 @@ export default function DualListRelationMatrix({
                         height: 28,
                         borderRadius: 4,
                       }}
-                      title={`Filter by ${type}`}
+                      title={`Filter by ${type === 'external_file' ? 'external file reference' : type}`}
                     >
                       {type === 'all'
                         ? 'All'
@@ -713,6 +735,8 @@ export default function DualListRelationMatrix({
                         ? '💻'
                         : type === 'link'
                         ? '🔗'
+                        : type === 'external_file'
+                        ? '📂'
                         : '💬'}
                     </button>
                   ))}
@@ -732,6 +756,10 @@ export default function DualListRelationMatrix({
                 const sharingColls = itemToCollectionsMap.get(key) || new Set<number>();
                 const linkedCount = sharingColls.size;
                 const isPopoverOpen = activePopoverItemId === key;
+                const extStatus =
+                  pointer.targetType === 'external_file'
+                    ? formatExternalFileBadge(externalStatuses?.[pointer.targetId])
+                    : null;
 
                 return (
                   <div
@@ -746,9 +774,29 @@ export default function DualListRelationMatrix({
                     <span className="matrix-type-icon">{getTargetPrefix(pointer.targetType)}</span>
 
                     {/* Truncated filename or text snippet */}
-                    <span className="matrix-pointer-title" title={resolvedTitle}>
+                    <span
+                      className="matrix-pointer-title"
+                      title={
+                        pointer.targetType === 'external_file'
+                          ? `${resolvedTitle} (${pointer.targetId})`
+                          : resolvedTitle
+                      }
+                    >
                       {resolvedTitle}
                     </span>
+
+                    {extStatus ? (
+                      <span
+                        className="matrix-link-indicator"
+                        style={{
+                          color: extStatus.available ? 'var(--crystal-success)' : 'var(--accent)',
+                          fontWeight: 550,
+                        }}
+                        title={pointer.targetId}
+                      >
+                        {extStatus.label}
+                      </span>
+                    ) : null}
 
                     {/* Rename / Organize item */}
                     {onOrganizeTarget ? (
@@ -765,8 +813,20 @@ export default function DualListRelationMatrix({
                       </button>
                     ) : null}
 
-                    {/* Direct jump to source conversation message */}
-                    {onOpenTargetSource ? (
+                    {/* Direct jump to source conversation message OR Reveal external file in Explorer */}
+                    {pointer.targetType === 'external_file' && onRevealExternalPath ? (
+                      <button
+                        type="button"
+                        className="matrix-link-indicator"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRevealExternalPath(pointer.targetId);
+                        }}
+                        title={`Reveal ${pointer.targetId} in Windows Explorer`}
+                      >
+                        <ArrowUpRight size={10} style={{ display: 'inline', verticalAlign: 'middle' }} /> Explorer
+                      </button>
+                    ) : onOpenTargetSource && pointer.targetType !== 'external_file' ? (
                       <button
                         type="button"
                         className="matrix-link-indicator"
@@ -964,6 +1024,28 @@ export default function DualListRelationMatrix({
                     >
                       📥 Target &quot;Inbox / Review Later&quot;
                     </button>
+                    {onLinkExternalFiles ? (
+                      <>
+                        <button
+                          type="button"
+                          className="filter-chip"
+                          onClick={() => onLinkExternalFiles(false)}
+                          style={{ fontSize: 10, padding: '2px 8px' }}
+                          title="Stage an external local file reference without copying it into the archive"
+                        >
+                          📂 + Local File Ref
+                        </button>
+                        <button
+                          type="button"
+                          className="filter-chip"
+                          onClick={() => onLinkExternalFiles(true)}
+                          style={{ fontSize: 10, padding: '2px 8px' }}
+                          title="Stage an external local folder reference without copying it into the archive"
+                        >
+                          📁 + Local Folder Ref
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               )}

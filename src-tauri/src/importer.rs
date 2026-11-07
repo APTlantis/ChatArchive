@@ -319,6 +319,132 @@ impl ProviderImporter for OpenAiImporter {
     }
 }
 
+pub fn preview_openai_source(
+    source_dir: &Path,
+    existing_index: Option<&ArchiveIndex>,
+    knowledge_state: &KnowledgeState,
+    display_source_path: &str,
+) -> AppResult<ExportPreviewSummary> {
+    let (conversations, _raw_files) = load_openai_conversations(source_dir)?;
+    let export_files = collect_export_files(source_dir)?;
+    let asset_index = build_asset_index(source_dir, &export_files)?;
+
+    let existing_map: HashMap<String, Option<f64>> = existing_index
+        .map(|idx| {
+            idx.conversations
+                .iter()
+                .map(|c| (c.id.clone(), c.update_time))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut candidate_ids = HashSet::new();
+    let mut new_conversations = 0usize;
+    let mut updated_conversations = 0usize;
+    let mut unchanged_conversations = 0usize;
+    let mut sample_new_titles = Vec::new();
+    let mut sample_updated_titles = Vec::new();
+
+    for item in &conversations {
+        let conv = &item.value;
+        let title = conv
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or("Untitled conversation")
+            .to_string();
+        let fallback = format!(
+            "{}{}",
+            title,
+            conv.get("create_time")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0)
+        );
+        let id = conv
+            .get("conversation_id")
+            .or_else(|| conv.get("id"))
+            .and_then(Value::as_str)
+            .map(ToString::to_string)
+            .unwrap_or_else(|| stable_id(&fallback));
+        let update_time = conv.get("update_time").and_then(Value::as_f64);
+
+        candidate_ids.insert(id.clone());
+        if let Some(old_update) = existing_map.get(&id) {
+            let diff = (update_time.unwrap_or(0.0) - old_update.unwrap_or(0.0)).abs();
+            if diff > 0.001 {
+                updated_conversations += 1;
+                if sample_updated_titles.len() < 6 {
+                    sample_updated_titles.push(title);
+                }
+            } else {
+                unchanged_conversations += 1;
+            }
+        } else {
+            new_conversations += 1;
+            if sample_new_titles.len() < 6 {
+                sample_new_titles.push(title);
+            }
+        }
+    }
+
+    let omitted_conversations = existing_map
+        .keys()
+        .filter(|existing_id| !candidate_ids.contains(*existing_id))
+        .count();
+
+    let mut unique_targets: HashMap<String, &KnowledgeTarget> = HashMap::new();
+    for fav in &knowledge_state.favorites {
+        unique_targets.insert(
+            format!("{}:{}", fav.target.target_type, fav.target.target_id),
+            &fav.target,
+        );
+    }
+    for note in &knowledge_state.notes {
+        unique_targets.insert(
+            format!("{}:{}", note.target.target_type, note.target.target_id),
+            &note.target,
+        );
+    }
+    for col_item in &knowledge_state.collection_items {
+        unique_targets.insert(
+            format!("{}:{}", col_item.target.target_type, col_item.target.target_id),
+            &col_item.target,
+        );
+    }
+    for tag_link in &knowledge_state.tag_links {
+        unique_targets.insert(
+            format!("{}:{}", tag_link.target.target_type, tag_link.target.target_id),
+            &tag_link.target,
+        );
+    }
+
+    let mut preserved_curated_items = 0usize;
+    let mut unavailable_curated_items = 0usize;
+    for target in unique_targets.values() {
+        if target.target_type == "external_file"
+            || candidate_ids.contains(&target.conversation_id)
+            || candidate_ids.contains(&target.target_id)
+        {
+            preserved_curated_items += 1;
+        } else {
+            unavailable_curated_items += 1;
+        }
+    }
+
+    Ok(ExportPreviewSummary {
+        source_path: display_source_path.to_string(),
+        total_conversations: conversations.len(),
+        new_conversations,
+        updated_conversations,
+        unchanged_conversations,
+        omitted_conversations,
+        source_asset_files: asset_index.all_files.len(),
+        preserved_curated_items,
+        unavailable_curated_items,
+        sample_new_titles,
+        sample_updated_titles,
+    })
+}
+
 fn fix_local_urls_after_commit(
     staging_path: &Path,
     archive_path: &Path,

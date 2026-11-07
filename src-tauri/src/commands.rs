@@ -1166,6 +1166,30 @@ pub(crate) fn build_recovery_bundle(
                     });
                 }
             }
+            "external_file" => {
+                let status = inspect_external_path(&target.target_id);
+                items.push(RecoveryBundleItem {
+                    target_type: "external_file".to_string(),
+                    target_id: target.target_id.clone(),
+                    title: target.title.clone(),
+                    conversation_id: target.conversation_id.clone(),
+                    message_id: None,
+                    exported_relative_path: Some(target.target_id.clone()),
+                    status: if status.exists {
+                        "external_reference_available".to_string()
+                    } else if !status.drive_present {
+                        "external_reference_drive_offline".to_string()
+                    } else {
+                        "external_reference_missing".to_string()
+                    },
+                    original_pointer: Some(target.target_id.clone()),
+                });
+                if status.exists {
+                    exported_count += 1;
+                } else {
+                    skipped_count += 1;
+                }
+            }
             other => {
                 skipped_count += 1;
                 items.push(RecoveryBundleItem {
@@ -1248,6 +1272,100 @@ pub fn export_recovery_bundle(
     fs::create_dir_all(&dest_root)
         .map_err(|err| format!("Could not create bundle export destination: {err}"))?;
     build_recovery_bundle(&library, &conn, &bundle_name, &targets, &dest_root)
+}
+
+pub fn inspect_external_path(raw_path: &str) -> ExternalFileStatus {
+    let trimmed = raw_path.trim();
+    let path = Path::new(trimmed);
+    let drive_present = if let Some(std::path::Component::Prefix(prefix)) = path.components().next()
+    {
+        let root = PathBuf::from(prefix.as_os_str()).join("\\");
+        root.exists()
+    } else {
+        true
+    };
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if let Ok(meta) = fs::metadata(path) {
+        let modified_iso = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .and_then(|d| chrono::DateTime::from_timestamp(d.as_secs() as i64, 0))
+            .map(|dt| dt.to_rfc3339());
+        ExternalFileStatus {
+            path: trimmed.to_string(),
+            exists: true,
+            is_dir: meta.is_dir(),
+            size_bytes: if meta.is_file() { Some(meta.len()) } else { None },
+            extension,
+            modified_iso,
+            drive_present,
+        }
+    } else {
+        ExternalFileStatus {
+            path: trimmed.to_string(),
+            exists: false,
+            is_dir: false,
+            size_bytes: None,
+            extension,
+            modified_iso: None,
+            drive_present,
+        }
+    }
+}
+
+#[tauri::command]
+pub fn inspect_external_files(paths: Vec<String>) -> Result<Vec<ExternalFileStatus>, String> {
+    Ok(paths.iter().map(|p| inspect_external_path(p)).collect())
+}
+
+#[tauri::command]
+pub fn reveal_external_path(path: String, reveal_only: bool) -> Result<(), String> {
+    let target = PathBuf::from(path.trim());
+    if !target.exists() {
+        return Err(format!("Path is not currently available on disk: {}", target.display()));
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if reveal_only && target.is_file() {
+            std::process::Command::new("explorer.exe")
+                .arg(format!("/select,{}", target.display()))
+                .spawn()
+                .map_err(|err| format!("Could not reveal in Explorer: {err}"))?;
+        } else {
+            std::process::Command::new("explorer.exe")
+                .arg(target.as_os_str())
+                .spawn()
+                .map_err(|err| format!("Could not open path in Explorer: {err}"))?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn preview_openai_export(
+    app: AppHandle,
+    source_path: String,
+) -> Result<ExportPreviewSummary, String> {
+    let (library, conn) = open_library_db(&app)?;
+    let existing_index = db::load_index(&conn)?;
+    let knowledge_state = db::load_knowledge_state(&conn)?;
+    let source = PathBuf::from(&source_path);
+    let prepared = prepare_openai_source(&source, &library)?;
+    let result = crate::importer::preview_openai_source(
+        &prepared.source_dir,
+        existing_index.as_ref(),
+        &knowledge_state,
+        &source_path,
+    );
+    if let Some(temp_dir) = prepared.cleanup_dir {
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+    result
 }
 
 #[cfg(test)]
@@ -1355,6 +1473,59 @@ mod tests {
             let rel = item.exported_relative_path.as_deref().unwrap();
             assert!(Path::new(&summary.bundle_path).join(rel).is_file());
         }
+        let _ = fs::remove_dir_all(library);
+    }
+
+    #[test]
+    fn dry_run_export_preview_and_external_file_inspection_work() {
+        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("tests")
+            .join("fixtures")
+            .join("openai-export");
+        let library = temporary_library("dry-run-preview");
+        db::ensure_library_layout(&library).unwrap();
+        let build = OpenAiImporter.import(&source, &library).unwrap();
+
+        let mut knowledge = KnowledgeState::default();
+        knowledge.favorites.push(KnowledgeFavorite {
+            target: KnowledgeTarget {
+                target_type: "conversation".to_string(),
+                target_id: build.conversations[0].summary.id.clone(),
+                conversation_id: build.conversations[0].summary.id.clone(),
+                title: build.conversations[0].summary.title.clone(),
+            },
+            created_at: 100,
+        });
+        knowledge.favorites.push(KnowledgeFavorite {
+            target: KnowledgeTarget {
+                target_type: "external_file".to_string(),
+                target_id: build.manifest_path.to_string_lossy().to_string(),
+                conversation_id: "external".to_string(),
+                title: "manifest.json".to_string(),
+            },
+            created_at: 101,
+        });
+
+        let preview = crate::importer::preview_openai_source(
+            &source,
+            Some(&build.index),
+            &knowledge,
+            "fixture",
+        )
+        .unwrap();
+        assert_eq!(preview.total_conversations, build.index.totals.conversations);
+        assert_eq!(preview.new_conversations, 0);
+        assert_eq!(preview.unchanged_conversations, build.index.totals.conversations);
+        assert_eq!(preview.preserved_curated_items, 2);
+        assert_eq!(preview.unavailable_curated_items, 0);
+
+        let file_status = inspect_external_path(&build.manifest_path.to_string_lossy());
+        assert!(file_status.exists);
+        assert!(!file_status.is_dir);
+        assert_eq!(file_status.extension, "json");
+
         let _ = fs::remove_dir_all(library);
     }
 }

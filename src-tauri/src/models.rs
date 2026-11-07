@@ -319,6 +319,8 @@ pub struct KnowledgeState {
     pub saved_searches: Vec<SavedSearch>,
     #[serde(default)]
     pub asset_triage: BTreeMap<String, String>,
+    #[serde(default)]
+    pub dismissed_relations: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -482,4 +484,32 @@ pub struct RecoveryBundleSummary {
     pub exported_count: usize,
     pub skipped_count: usize,
     pub items: Vec<RecoveryBundleItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalFileStatus {
+    pub path: String,
+    pub exists: bool,
+    pub is_dir: bool,
+    pub size_bytes: Option<u64>,
+    pub extension: String,
+    pub modified_iso: Option<String>,
+    pub drive_present: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportPreviewSummary {
+    pub source_path: String,
+    pub total_conversations: usize,
+    pub new_conversations: usize,
+    pub updated_conversations: usize,
+    pub unchanged_conversations: usize,
+    pub omitted_conversations: usize,
+    pub source_asset_files: usize,
+    pub preserved_curated_items: usize,
+    pub unavailable_curated_items: usize,
+    pub sample_new_titles: Vec<String>,
+    pub sample_updated_titles: Vec<String>,
 }

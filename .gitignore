@@ -39,3 +39,4 @@ yarn-error.log*
 .turbo/
 .DS_Store
 /.evals_tmp/
+/prism-components/

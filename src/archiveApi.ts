@@ -15,6 +15,8 @@ import type {
   KnowledgeTarget,
   ProjectState,
   RecoveryBundleSummary,
+  ExternalFileStatus,
+  ExportPreviewSummary,
 } from './types';
 
 const INDEX_URL = '/archive-data/index.json';
@@ -285,4 +287,54 @@ export function resolveArchiveAssetUrl(url: string) {
     return convertFileSrc(url.slice('local-file://'.length));
   }
   return url;
+}
+
+export async function previewOpenAiExport(): Promise<ExportPreviewSummary | null> {
+  if (!isTauriRuntime()) return null;
+  const selected = await open({
+    multiple: false,
+    title: 'Choose OpenAI export zip for dry-run preview',
+    filters: [{ name: 'OpenAI export', extensions: ['zip'] }],
+  });
+  if (!selected || Array.isArray(selected)) return null;
+  return invoke<ExportPreviewSummary>('preview_openai_export', { sourcePath: selected });
+}
+
+export async function importOpenAiExportByPath(sourcePath: string, libraryPath?: string | null) {
+  if (!isTauriRuntime()) throw new Error('Import is only available in the Tauri desktop app.');
+  return invoke<ImportSummary>('import_openai_export', {
+    sourcePath,
+    libraryPath: libraryPath || null,
+  });
+}
+
+export async function pickExternalFileReferences(directory = false): Promise<KnowledgeTarget[]> {
+  if (!isTauriRuntime()) return [];
+  const selected = await open({
+    directory,
+    multiple: !directory,
+    title: directory ? 'Reference external local folder' : 'Reference external local file(s)',
+  });
+  if (!selected) return [];
+  const paths = Array.isArray(selected) ? selected : [selected];
+  return paths.map((p) => {
+    const normalized = p.replace(/\\/g, '/');
+    const baseName = normalized.split('/').filter(Boolean).pop() || p;
+    return {
+      targetType: 'external_file',
+      targetId: p,
+      conversationId: 'external',
+      title: baseName,
+    };
+  });
+}
+
+export async function inspectExternalFiles(paths: string[]): Promise<ExternalFileStatus[]> {
+  if (!isTauriRuntime() || !paths.length) return [];
+  return invoke<ExternalFileStatus[]>('inspect_external_files', { paths });
+}
+
+export async function revealExternalPath(path: string, revealOnly = true): Promise<void> {
+  if (!isTauriRuntime()) return;
+  await invoke('reveal_external_path', { path, revealOnly });
 }
