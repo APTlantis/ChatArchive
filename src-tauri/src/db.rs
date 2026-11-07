@@ -560,6 +560,10 @@ pub fn list_asset_artifacts(conn: &Connection) -> AppResult<Vec<AssetArtifact>> 
     list_artifact_json(conn, "asset_artifacts", "kind COLLATE NOCASE, id")
 }
 
+pub fn list_link_artifacts(conn: &Connection) -> AppResult<Vec<LinkArtifact>> {
+    list_artifact_json(conn, "link_artifacts", "domain COLLATE NOCASE, id")
+}
+
 fn list_artifact_json<T: serde::de::DeserializeOwned>(
     conn: &Connection,
     table: &str,
@@ -603,10 +607,34 @@ pub fn document_artifact_content(conn: &Connection, artifact_id: &str) -> AppRes
                     | "yml"
                     | "csv"
                     | "xml"
+                    | "py"
+                    | "ps1"
+                    | "sh"
+                    | "rs"
+                    | "ts"
+                    | "tsx"
+                    | "js"
+                    | "jsx"
+                    | "sql"
+                    | "css"
+                    | "ini"
+                    | "cfg"
+                    | "conf"
+                    | "log"
+                    | "bat"
+                    | "cmd"
+                    | "svg"
             ) {
                 return fs::read_to_string(&path).map_err(|err| {
                     format!("Could not read attached document {}: {err}", path.display())
                 });
+            }
+            if path.is_file() && !matches!(extension.as_str(), "pdf" | "doc" | "docx" | "ppt" | "pptx" | "xls" | "xlsx" | "odt" | "zip" | "7z" | "rar") {
+                if let Ok(text_content) = fs::read_to_string(&path) {
+                    if !text_content.trim().is_empty() {
+                        return Ok(text_content);
+                    }
+                }
             }
             return Ok(format!(
                 "# {}\n\nThis is an attached **{}** document. Use **Export original** to copy the source file without conversion.",
@@ -614,38 +642,87 @@ pub fn document_artifact_content(conn: &Connection, artifact_id: &str) -> AppRes
                 extension.to_ascii_uppercase()
             ));
         }
-        return Ok(format!(
-            "# {}\n\nThe original document is unavailable in this archive.\n\nPointer: `{}`",
-            artifact.title,
-            artifact.original.as_deref().unwrap_or(url)
-        ));
     }
 
-    // Compatibility path for document artifacts created by the earlier
-    // message-content classifier.
-    let message_json: String = conn
+    // Compatibility & context recovery path: load the source message and surrounding
+    // conversation exchange so uploaded pointers without an exported blob still display
+    // the actual conversation document/discussion instead of only a pointer ID.
+    if let Some(message_json) = conn
         .query_row(
             "SELECT json FROM messages WHERE conversation_id = ?1 AND id = ?2",
             params![artifact.base.conversation_id, artifact.base.message_id],
-            |row| row.get(0),
+            |row| row.get::<_, String>(0),
         )
         .optional()
         .map_err(|err| format!("Could not query document source message: {err}"))?
-        .ok_or_else(|| "Document source message is no longer available".to_string())?;
-    let message: ArchiveMessage = serde_json::from_str(&message_json)
-        .map_err(|err| format!("Could not parse document source message: {err}"))?;
-    for (block_index, block) in message.blocks.iter().enumerate() {
-        if let MessageBlock::Markdown { text } = block {
-            let candidate_id = crate::importer::stable_id(&format!(
-                "document:{}:{}:{block_index}",
-                artifact.base.conversation_id, artifact.base.message_id
-            ));
-            if candidate_id == artifact_id {
-                return Ok(text.clone());
+    {
+        if let Ok(message) = serde_json::from_str::<ArchiveMessage>(&message_json) {
+            for (block_index, block) in message.blocks.iter().enumerate() {
+                if let MessageBlock::Markdown { text } = block {
+                    let candidate_id = crate::importer::stable_id(&format!(
+                        "document:{}:{}:{block_index}",
+                        artifact.base.conversation_id, artifact.base.message_id
+                    ));
+                    if candidate_id == artifact_id {
+                        return Ok(text.clone());
+                    }
+                }
             }
+
+            let pointer_note = artifact
+                .original
+                .as_deref()
+                .or(artifact.url.as_deref())
+                .unwrap_or("attachment");
+            let mut sections = Vec::new();
+            sections.push(format!(
+                "# {}\n\n> **Conversation:** {}  \n> **Attachment pointer:** `{}` *(OpenAI export did not include the separate attachment file; showing the source conversation messages where this document was used)*",
+                artifact.title,
+                artifact.base.conversation_title,
+                pointer_note
+            ));
+            if !message.text.trim().is_empty() {
+                sections.push(format!(
+                    "### {} message\n\n{}",
+                    if message.role == "user" { "User" } else { "Assistant" },
+                    message.text.trim()
+                ));
+            }
+            if let Some(msg_time) = message.create_time {
+                let mut next_stmt = conn
+                    .prepare(
+                        "SELECT role, text FROM messages WHERE conversation_id = ?1 AND hidden = 0 AND create_time > ?2 ORDER BY create_time ASC LIMIT 2",
+                    )
+                    .map_err(|err| err.to_string())?;
+                let rows = next_stmt
+                    .query_map(params![artifact.base.conversation_id, msg_time], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })
+                    .map_err(|err| err.to_string())?;
+                for row in rows.flatten() {
+                    let (role, text) = row;
+                    if !text.trim().is_empty() {
+                        sections.push(format!(
+                            "### Follow-up ({})\n\n{}",
+                            if role == "user" { "User" } else { "Assistant" },
+                            text.trim()
+                        ));
+                    }
+                }
+            }
+            return Ok(sections.join("\n\n---\n\n"));
         }
     }
-    Err("The indexed document block could not be found in its source message".to_string())
+
+    Ok(format!(
+        "# {}\n\nThe original document is unavailable in this archive.\n\nPointer: `{}`",
+        artifact.title,
+        artifact
+            .original
+            .as_deref()
+            .or(artifact.url.as_deref())
+            .unwrap_or("unknown")
+    ))
 }
 
 pub fn load_document_artifact(conn: &Connection, artifact_id: &str) -> AppResult<DocumentArtifact> {
@@ -981,6 +1058,9 @@ pub fn load_knowledge_state(conn: &Connection) -> AppResult<KnowledgeState> {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|err| err.to_string())?;
     }
+    state.custom_titles = get_meta(conn, "knowledge_custom_titles")?.unwrap_or_default();
+    state.saved_searches = get_meta(conn, "knowledge_saved_searches")?.unwrap_or_default();
+    state.asset_triage = get_meta(conn, "knowledge_asset_triage")?.unwrap_or_default();
     Ok(state)
 }
 
@@ -1018,6 +1098,24 @@ pub fn replace_knowledge_state(
     for favorite in &state.favorites {
         tx.execute("INSERT INTO knowledge_favorites(target_type, target_id, conversation_id, title, created_at) VALUES (?1, ?2, ?3, ?4, ?5)", params![favorite.target.target_type, favorite.target.target_id, favorite.target.conversation_id, favorite.target.title, favorite.created_at]).map_err(|err| err.to_string())?;
     }
+    tx.execute(
+        "INSERT INTO app_meta(key, value) VALUES ('knowledge_custom_titles', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![json(&state.custom_titles)?],
+    )
+    .map_err(|err| err.to_string())?;
+    tx.execute(
+        "INSERT INTO app_meta(key, value) VALUES ('knowledge_saved_searches', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![json(&state.saved_searches)?],
+    )
+    .map_err(|err| err.to_string())?;
+    tx.execute(
+        "INSERT INTO app_meta(key, value) VALUES ('knowledge_asset_triage', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![json(&state.asset_triage)?],
+    )
+    .map_err(|err| err.to_string())?;
     tx.commit()
         .map_err(|err| format!("Could not commit knowledge state: {err}"))?;
     load_knowledge_state(conn)
@@ -1300,10 +1398,19 @@ mod tests {
                 target: code,
                 created_at: 14,
             }],
+            custom_titles: std::collections::BTreeMap::from([(
+                "code:code-1".to_string(),
+                "Custom Rust Importer".to_string(),
+            )]),
+            ..Default::default()
         };
 
         let loaded = replace_knowledge_state(&mut conn, &state).unwrap();
         assert_eq!(loaded.tags.len(), 1);
+        assert_eq!(
+            loaded.custom_titles.get("code:code-1").map(String::as_str),
+            Some("Custom Rust Importer")
+        );
         assert_eq!(loaded.collections.len(), 1);
         assert_eq!(loaded.collection_items.len(), 2);
         assert_eq!(loaded.notes[0].body, "This became v0.3.0 implementation.");

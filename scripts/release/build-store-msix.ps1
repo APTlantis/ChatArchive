@@ -105,7 +105,7 @@ if ($CertificatePath) { $signtool = Find-WindowsSdkTool 'signtool.exe' }
 Push-Location $root
 try {
   if (-not $SkipAppBuild) {
-    & npx tauri build --no-bundle
+    & pnpm exec tauri build --no-bundle
     if ($LASTEXITCODE) { throw 'Tauri release build failed.' }
   }
 

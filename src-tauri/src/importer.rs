@@ -38,12 +38,14 @@ pub struct ImportBuild {
 struct AssetIndex {
     by_key: HashMap<String, Vec<AssetCandidate>>,
     image_files: Vec<AssetCandidate>,
+    all_files: HashMap<PathBuf, AssetCandidate>,
 }
 
 #[derive(Clone, Debug)]
 struct AssetCandidate {
     source_path: PathBuf,
     original_name: String,
+    detected_ext: Option<String>,
 }
 
 struct SourceConversation {
@@ -219,10 +221,16 @@ impl ProviderImporter for OpenAiImporter {
 
         for file in &copied {
             let candidate = asset_index
-                .image_files
-                .iter()
-                .find(|item| &item.source_path == file)
+                .all_files
+                .get(file)
                 .cloned()
+                .or_else(|| {
+                    asset_index
+                        .image_files
+                        .iter()
+                        .find(|item| &item.source_path == file)
+                        .cloned()
+                })
                 .unwrap_or_else(|| AssetCandidate {
                     source_path: file.clone(),
                     original_name: file
@@ -230,10 +238,12 @@ impl ProviderImporter for OpenAiImporter {
                         .and_then(|value| value.to_str())
                         .unwrap_or("asset")
                         .to_string(),
+                    detected_ext: detect_file_signature(file).map(ToString::to_string),
                 });
             manifest.copied_assets.push(json!({
         "source": relative_string(source_dir, file),
         "originalName": candidate.original_name,
+        "detectedExt": candidate.detected_ext,
         "url": local_file_url(&staging_path.join("assets").join(export_asset_name(&candidate))),
       }));
         }
@@ -474,6 +484,68 @@ fn collect_export_files(source_dir: &Path) -> AppResult<Vec<PathBuf>> {
     Ok(files)
 }
 
+pub(crate) fn detect_file_signature(path: &Path) -> Option<&'static str> {
+    use std::io::Read;
+    let mut file = fs::File::open(path).ok()?;
+    let mut buf = [0u8; 256];
+    let n = file.read(&mut buf).ok()?;
+    let slice = &buf[..n];
+    if slice.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Some("png");
+    }
+    if slice.starts_with(b"\xFF\xD8\xFF") {
+        return Some("jpg");
+    }
+    if slice.len() >= 12 && &slice[0..4] == b"RIFF" && &slice[8..12] == b"WEBP" {
+        return Some("webp");
+    }
+    if slice.starts_with(b"GIF87a") || slice.starts_with(b"GIF89a") {
+        return Some("gif");
+    }
+    if slice.len() >= 14 && &slice[0..2] == b"BM" {
+        return Some("bmp");
+    }
+    if slice.len() >= 12 && (&slice[4..12] == b"ftypavif" || &slice[4..12] == b"ftypavis") {
+        return Some("avif");
+    }
+    if slice.starts_with(b"\x00\x00\x01\x00") {
+        return Some("ico");
+    }
+    if slice.starts_with(b"%PDF-") {
+        return Some("pdf");
+    }
+    if slice.starts_with(b"PK\x03\x04") {
+        return Some("zip");
+    }
+    if let Ok(text) = std::str::from_utf8(slice) {
+        let trimmed = text.trim_start_matches('\u{feff}').trim_start();
+        if trimmed.starts_with("<svg")
+            || (trimmed.starts_with("<?xml") && trimmed.contains("<svg"))
+        {
+            return Some("svg");
+        }
+    }
+    None
+}
+
+pub(crate) fn normalize_code_language(raw: &str) -> String {
+    let token = raw.trim().split_whitespace().next().unwrap_or("");
+    if token.is_empty() || token.len() > 24 {
+        return "text".to_string();
+    }
+    let mut chars = token.chars();
+    let Some(first) = chars.next() else {
+        return "text".to_string();
+    };
+    if !first.is_ascii_alphanumeric() {
+        return "text".to_string();
+    }
+    if !chars.all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '+' | '#' | '.' | '-')) {
+        return "text".to_string();
+    }
+    token.to_ascii_lowercase()
+}
+
 fn build_asset_index(source_dir: &Path, files: &[PathBuf]) -> AppResult<AssetIndex> {
     let original_names = load_asset_original_names(source_dir)?;
     let mut index = AssetIndex::default();
@@ -487,19 +559,27 @@ fn build_asset_index(source_dir: &Path, files: &[PathBuf]) -> AppResult<AssetInd
             .get(&source_name)
             .cloned()
             .unwrap_or_else(|| source_name.clone());
-        let ext = Path::new(&original_name)
+        let raw_ext = Path::new(&original_name)
             .extension()
             .and_then(|value| value.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
+        let detected_ext = if raw_ext.is_empty() || raw_ext == "dat" {
+            detect_file_signature(file).map(ToString::to_string)
+        } else {
+            None
+        };
+        let effective_ext = detected_ext.as_deref().unwrap_or(raw_ext.as_str());
         let is_image = matches!(
-            ext.as_str(),
+            effective_ext,
             "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "avif" | "svg"
         );
         let candidate = AssetCandidate {
             source_path: file.clone(),
             original_name,
+            detected_ext,
         };
+        index.all_files.insert(file.clone(), candidate.clone());
         if is_image {
             index.image_files.push(candidate.clone());
         }
@@ -637,10 +717,15 @@ fn export_asset_name(source_file: &AssetCandidate) -> String {
         .file_stem()
         .and_then(|value| value.to_str())
         .unwrap_or("asset");
-    let ext = original_path
+    let raw_ext = original_path
         .extension()
         .and_then(|value| value.to_str())
         .unwrap_or("");
+    let ext = if raw_ext.is_empty() || raw_ext.eq_ignore_ascii_case("dat") {
+        source_file.detected_ext.as_deref().unwrap_or(raw_ext)
+    } else {
+        raw_ext
+    };
     let short_key = source_stem.chars().take(32).collect::<String>();
     if ext.is_empty() {
         format!("{short_key}-{original_stem}")
@@ -750,10 +835,8 @@ fn extract_code_fences(text: &str) -> Vec<MessageBlock> {
         blocks.push(MessageBlock::Code {
             language: captures
                 .get(1)
-                .map(|item| item.as_str().trim())
-                .filter(|item| !item.is_empty())
-                .unwrap_or("text")
-                .to_string(),
+                .map(|item| normalize_code_language(item.as_str()))
+                .unwrap_or_else(|| "text".to_string()),
             text: captures
                 .get(2)
                 .map(|item| item.as_str().trim_end_matches('\n'))
@@ -1397,7 +1480,7 @@ fn build_conversation_artifacts(
     for message in messages.iter().filter(|message| !message.hidden) {
         for (block_index, block) in message.blocks.iter().enumerate() {
             if let MessageBlock::Code { language, text } = block {
-                let language = artifact_text(language).to_ascii_lowercase();
+                let language = normalize_code_language(&artifact_text(language));
                 artifacts.code.push(CodeArtifact {
                     base: base_artifact(
                         stable_id(&format!("code:{}:{}:{block_index}", summary.id, message.id)),
@@ -1407,11 +1490,7 @@ fn build_conversation_artifacts(
                         &format!("{}\n{}\n{}", summary.title, language, text),
                     ),
                     r#type: "code".to_string(),
-                    language: if language.is_empty() {
-                        "text".to_string()
-                    } else {
-                        language
-                    },
+                    language,
                     preview: truncate_chars(&artifact_text(text), 260),
                     text: text.clone(),
                 });
@@ -1585,27 +1664,35 @@ fn classify_document(text: &str, conversation_title: &str) -> String {
 fn extract_text_urls(text: &str) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut urls = Vec::new();
-    for item in Regex::new(r#"https?://[^\s<>"')\]]+"#)
+    for item in Regex::new(r#"https?://[^\s<>"'\)\]`*{}]+"#)
         .unwrap()
         .find_iter(text)
     {
-        let url = item
-            .as_str()
-            .trim_end_matches(&['.', ',', ';', ':', '!', '?'][..])
-            .to_string();
-        if seen.insert(url.clone()) {
+        let url = clean_extracted_url(item.as_str());
+        if !url.is_empty() && seen.insert(url.clone()) {
             urls.push(url);
         }
     }
     urls
 }
 
-fn domain_from_url(url: &str) -> String {
-    Url::parse(url)
+pub(crate) fn clean_extracted_url(raw: &str) -> String {
+    raw.trim()
+        .trim_start_matches(&['`', '*', '\'', '"'][..])
+        .trim_end_matches(&['.', ',', ';', ':', '!', '?', '`', '*', '\'', '"', ')', ']', '}'][..])
+        .to_string()
+}
+
+pub(crate) fn domain_from_url(url: &str) -> String {
+    let cleaned = clean_extracted_url(url);
+    Url::parse(&cleaned)
         .ok()
-        .and_then(|url| {
-            url.host_str()
-                .map(|host| host.trim_start_matches("www.").to_string())
+        .and_then(|parsed| {
+            parsed.host_str().map(|host| {
+                host.trim_start_matches("www.")
+                    .trim_matches(&['`', '*', '\'', '"', '.', ','][..])
+                    .to_ascii_lowercase()
+            })
         })
         .unwrap_or_default()
 }
@@ -1935,6 +2022,45 @@ mod tests {
             .is_some_and(
                 |name| name.starts_with("conversations-") || name == "conversations.json"
             )));
+    }
+
+    #[test]
+    fn detects_dat_asset_magic_bytes_and_exports_real_extension() {
+        let temp = temp_library("magic-bytes");
+        fs::create_dir_all(&temp).unwrap();
+        let png_dat = temp.join("file_00000000abcd1234.dat");
+        fs::write(&png_dat, b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR").unwrap();
+        let webp_dat = temp.join("file_00000000efgh5678.dat");
+        fs::write(&webp_dat, b"RIFF\x24\x00\x00\x00WEBPVP8 ").unwrap();
+        let svg_dat = temp.join("file_00000000ijkl9012.dat");
+        fs::write(&svg_dat, b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>").unwrap();
+
+        assert_eq!(detect_file_signature(&png_dat), Some("png"));
+        assert_eq!(detect_file_signature(&webp_dat), Some("webp"));
+        assert_eq!(detect_file_signature(&svg_dat), Some("svg"));
+
+        let index = build_asset_index(
+            &temp,
+            &[png_dat.clone(), webp_dat.clone(), svg_dat.clone()],
+        )
+        .unwrap();
+        assert_eq!(index.image_files.len(), 3);
+        let exported = export_asset_name(&index.image_files[0]);
+        assert!(
+            exported.ends_with(".png"),
+            "expected .png extension for PNG .dat asset, got {exported}"
+        );
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    #[test]
+    fn sanitizes_malformed_code_fence_languages() {
+        assert_eq!(normalize_code_language(" Rust "), "rust");
+        assert_eq!(normalize_code_language("python title=\"app.py\""), "python");
+        assert_eq!(normalize_code_language("c++"), "c++");
+        assert_eq!(normalize_code_language("\""), "text");
+        assert_eq!(normalize_code_language("\"},{\"role\":\"tool\""), "text");
+        assert_eq!(normalize_code_language("(r\"[^a-z0-9._-]+\")"), "text");
     }
 
     #[test]

@@ -22,29 +22,32 @@ ChatArchive is a local-first desktop archive for exported ChatGPT conversations.
 
 ## Common Commands
 
-- `npm run dev`: Vite dev server on `127.0.0.1:5173`
-- `npm run tauri:dev`: run the desktop app in development
-- `npm run build`: production frontend build
-- `npm test`: Vitest unit suite
-- `npm run test:ui`: Playwright UI coverage
-- `npm run test:rust`: Rust importer/database tests
-- `npm run test:native`: destructive native audit against the workspace-local `.qa\library`
-- `npm run test:installer`: MSI and NSIS lifecycle audit
-- `npm run qa:phase2`: full Phase 2 release gate
+Always use `pnpm` (never `npm`) for package management and script execution in this repository.
+
+- `pnpm dev`: Vite dev server on `127.0.0.1:5173`
+- `pnpm tauri:dev`: run the desktop app in development
+- `pnpm build`: production frontend build
+- `pnpm test`: Vitest unit suite
+- `pnpm test:ui`: Playwright UI coverage
+- `pnpm test:rust`: Rust importer/database tests
+- `pnpm test:native`: destructive native audit against the workspace-local `.qa\library`
+- `pnpm test:installer`: MSI and NSIS lifecycle audit
+- `pnpm qa:phase2`: full Phase 2 release gate
 
 ## Working Rules
 
-1. Prefer the Tauri app path over the legacy static ingest path unless the task explicitly targets legacy behavior.
-2. Treat SQLite and the filesystem archive as product state. Changes that affect import, manifests, artifacts, or viewer state should be verified carefully.
-3. Keep frontend changes aligned with the existing React/Vite structure instead of introducing parallel patterns.
-4. Keep Rust-side changes scoped to the command/import/database boundary already present in `src-tauri/src/`.
-5. Do not casually run installer or destructive native QA flows on a machine without a reconstructable baseline.
+1. Use `pnpm` instead of `npm` for all Node/frontend commands.
+2. Prefer the Tauri app path over the legacy static ingest path unless the task explicitly targets legacy behavior.
+3. Treat SQLite and the filesystem archive as product state. Changes that affect import, manifests, artifacts, or viewer state should be verified carefully.
+4. Keep frontend changes aligned with the existing React/Vite structure instead of introducing parallel patterns.
+5. Keep Rust-side changes scoped to the command/import/database boundary already present in `src-tauri/src/`.
+6. Do not casually run installer or destructive native QA flows on a machine without a reconstructable baseline.
 
 ## Testing Guidance
 
 - Run the smallest relevant test set for the change.
-- Expand to `npm run test:ui` or `npm run test:rust` when touching shared reader behavior, importer logic, or persistence.
-- Reserve `npm run test:native`, `npm run test:installer`, and `npm run qa:phase2` for work that actually affects those release-gated paths.
+- Expand to `pnpm test:ui` or `pnpm test:rust` when touching shared reader behavior, importer logic, or persistence.
+- Reserve `pnpm test:native`, `pnpm test:installer`, and `pnpm qa:phase2` for work that actually affects those release-gated paths.
 
 ## Data And Safety Notes
 

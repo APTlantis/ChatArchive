@@ -6,12 +6,15 @@ import type {
   CodeArtifact,
   DocumentArtifact,
   AssetArtifact,
+  LinkArtifact,
   ConversationFile,
   SearchFilters,
   ViewerState,
   MessageBookmark,
   KnowledgeState,
+  KnowledgeTarget,
   ProjectState,
+  RecoveryBundleSummary,
 } from './types';
 
 const INDEX_URL = '/archive-data/index.json';
@@ -120,19 +123,51 @@ export async function loadAssetArtifacts(): Promise<AssetArtifact[]> {
   return artifacts?.assets || [];
 }
 
+export async function loadLinkArtifacts(): Promise<LinkArtifact[]> {
+  if (isTauriRuntime()) return invoke<LinkArtifact[]>('list_link_artifacts');
+  const artifacts = await loadArtifactIndex();
+  return artifacts?.links || [];
+}
+
 export async function loadDocumentArtifactContent(artifact: DocumentArtifact): Promise<string> {
   if (isTauriRuntime()) return invoke<string>('get_document_artifact_content', { artifactId: artifact.id });
-  if (artifact.url) {
-    return `# ${artifact.title}\n\nThis is an attached document. Open it in the desktop archive to preview or export the original file.\n\nPointer: \`${artifact.original || artifact.url}\``;
+  if (artifact.url && artifact.url.startsWith('/')) {
+    try {
+      const res = await fetch(artifact.url);
+      if (res.ok) {
+        const text = await res.text();
+        if (text.trim()) return text;
+      }
+    } catch {
+      // Fall through to conversation message lookup
+    }
   }
-  const conversation = await loadConversation(artifact.conversationId);
-  const message = conversation.messages.find((item) => item.id === artifact.messageId);
-  const normalizedPreview = artifact.preview.replace(/\s+/g, ' ').trim();
-  const match = message?.blocks.find(
-    (block) => block.type === 'markdown' && block.text.replace(/\s+/g, ' ').trim().startsWith(normalizedPreview),
-  );
-  if (!match || match.type !== 'markdown') throw new Error('Document source block was not found.');
-  return match.text;
+  try {
+    const conversation = await loadConversation(artifact.conversationId);
+    const msgIndex = conversation.messages.findIndex((item) => item.id === artifact.messageId);
+    const message = msgIndex >= 0 ? conversation.messages[msgIndex] : undefined;
+    const normalizedPreview = artifact.preview.replace(/\s+/g, ' ').trim();
+    const match = message?.blocks.find(
+      (block) => block.type === 'markdown' && block.text.replace(/\s+/g, ' ').trim().startsWith(normalizedPreview),
+    );
+    if (match && match.type === 'markdown') return match.text;
+    if (message) {
+      const sections: string[] = [
+        `# ${artifact.title}\n\n> **Conversation:** ${artifact.conversationTitle}`,
+      ];
+      if (message.text.trim()) {
+        sections.push(`### ${message.role === 'user' ? 'User' : 'Assistant'} message\n\n${message.text.trim()}`);
+      }
+      const nextMsg = conversation.messages[msgIndex + 1];
+      if (nextMsg && !nextMsg.hidden && nextMsg.text.trim()) {
+        sections.push(`### Follow-up (${nextMsg.role === 'user' ? 'User' : 'Assistant'})\n\n${nextMsg.text.trim()}`);
+      }
+      return sections.join('\n\n---\n\n');
+    }
+  } catch {
+    // Fall through
+  }
+  return `# ${artifact.title}\n\nThis is an attached document. Open it in the desktop archive to preview or export the original file.\n\nPointer: \`${artifact.original || artifact.url || 'unknown'}\``;
 }
 
 export async function exportDocumentMarkdown(artifact: DocumentArtifact, markdown: string) {
@@ -220,6 +255,29 @@ export async function saveScrollPosition(conversationId: string, position: numbe
 export async function exportConversationMarkdown(conversationId: string, markdown: string) {
   if (!isTauriRuntime()) return null;
   return invoke<string>('export_conversation_markdown', { conversationId, markdown });
+}
+
+export async function exportRecoveryBundle(
+  bundleName: string,
+  targets: KnowledgeTarget[],
+  chooseDirectory = false,
+): Promise<RecoveryBundleSummary | null> {
+  if (!isTauriRuntime()) return null;
+  let destinationDir: string | null = null;
+  if (chooseDirectory) {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: `Choose export folder for "${bundleName}" recovery bundle`,
+    });
+    if (!selected || Array.isArray(selected)) return null;
+    destinationDir = selected;
+  }
+  return invoke<RecoveryBundleSummary>('export_recovery_bundle', {
+    bundleName,
+    targets,
+    destinationDir,
+  });
 }
 
 export function resolveArchiveAssetUrl(url: string) {

@@ -52,7 +52,7 @@ Most chat exports are useful but awkward. They preserve data, not continuity. Th
 ## Requirements
 
 - Node.js
-- npm
+- pnpm
 - Rust toolchain compatible with Tauri 2
 - A ChatGPT/OpenAI export folder containing either `conversations.json` or sharded `conversations-*.json` files
 
@@ -63,25 +63,25 @@ The app is now a Tauri 2 + React + TypeScript + Rust project.
 Install dependencies:
 
 ```powershell
-npm install
+pnpm install
 ```
 
 Run the desktop app in development:
 
 ```powershell
-npm run tauri:dev
+pnpm tauri:dev
 ```
 
 Build the React frontend:
 
 ```powershell
-npm run build
+pnpm build
 ```
 
 Build the Windows desktop bundle:
 
 ```powershell
-npm run tauri:build
+pnpm tauri:build
 ```
 
 ## Testing And Release Gate
@@ -90,28 +90,28 @@ The repository includes permanent regression coverage for the React explorer log
 
 ```powershell
 # Fast unit suite
-npm test
+pnpm test
 
 # Rendered UI, responsive layout, keyboard, and accessibility checks
-npm run test:ui
+pnpm test:ui
 
 # Rust importer/database tests
-npm run test:rust
+pnpm test:rust
 
 # Destructive real-export audit against .qa\library under the repo root
-npm run test:native
+pnpm test:native
 
 # Store MSIX package build; requires untracked Partner Center identity config
-npm run release:msix
+pnpm release:msix
 
 # Bundle release docs and evidence for downstream hash/signing
-npm run release:docs
+pnpm release:docs
 
 # Historical MSI/NSIS lifecycle audit, retained for developer fallback evidence only
-npm run test:installer
+pnpm test:installer
 
 # Complete release gate
-npm run qa:phase2
+pnpm qa:phase2
 ```
 
 `test:native` mirrors the configured live library into `.qa\library` under the repo root before destructive testing. It does not use `A:\ChatArchive` as an import destination. The real export and generated QA workspace remain outside Git; committed fixtures are synthetic.

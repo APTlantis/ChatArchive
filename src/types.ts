@@ -127,6 +127,21 @@ export interface KnowledgeTagLink extends KnowledgeTarget { tagId: number }
 export interface KnowledgeCollectionItem extends KnowledgeTarget { collectionId: number; createdAt: number }
 export interface KnowledgeNote extends KnowledgeTarget { id: number; body: string; createdAt: number; updatedAt: number }
 export interface KnowledgeFavorite extends KnowledgeTarget { createdAt: number }
+export interface SavedSearch {
+  id: string;
+  name: string;
+  query: string;
+  fieldScope: SearchFieldScope;
+  regex: boolean;
+  startDate: string;
+  endDate: string;
+  minMessages: string;
+  maxMessages: string;
+  createdAt: number;
+}
+
+export type AssetTriageStatus = 'unreviewed' | 'external_ok' | 'unrecoverable' | 'relinked';
+
 export interface KnowledgeState {
   tags: KnowledgeTag[];
   collections: KnowledgeCollection[];
@@ -134,6 +149,9 @@ export interface KnowledgeState {
   collectionItems: KnowledgeCollectionItem[];
   notes: KnowledgeNote[];
   favorites: KnowledgeFavorite[];
+  customTitles?: Record<string, string>;
+  savedSearches?: SavedSearch[];
+  assetTriage?: Record<string, AssetTriageStatus>;
 }
 
 export interface ProjectScanRun { id: number; scannedAt: number; candidateCount: number }
@@ -220,4 +238,31 @@ export interface LinkArtifact extends BaseArtifact {
   label: string;
   url: string;
   domain: string;
+}
+
+export type CodeArtifactCategory = 'code' | 'shell' | 'config' | 'diagram' | 'prose';
+
+export type LinkArtifactCategory = 'web' | 'repo' | 'docs' | 'local';
+
+export type DocumentAvailabilityFilter = 'all' | 'recovered' | 'pointer';
+
+export interface RecoveryBundleItem {
+  targetType: string;
+  targetId: string;
+  title: string;
+  conversationId: string;
+  messageId?: string | null;
+  exportedRelativePath?: string | null;
+  status: string;
+  originalPointer?: string | null;
+}
+
+export interface RecoveryBundleSummary {
+  bundleName: string;
+  bundlePath: string;
+  manifestPath: string;
+  readmePath: string;
+  exportedCount: number;
+  skippedCount: number;
+  items: RecoveryBundleItem[];
 }

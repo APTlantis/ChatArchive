@@ -15,14 +15,17 @@ import {
   Clipboard,
   Code2,
   Download,
+  ExternalLink,
   Eye,
   EyeOff,
   FileArchive,
   FileText,
   FileImage,
+  Globe,
   Home,
   Image as ImageIcon,
   Images,
+  Link2,
   ListFilter,
   FolderKanban,
   NotebookPen,
@@ -43,15 +46,21 @@ import DualListRelationMatrix, {
 import type {
   ArchiveAsset,
   AssetArtifact,
+  AssetTriageStatus,
   ArtifactIndex,
   ArchiveIndex,
   ArchiveMessage,
   CodeArtifact,
+  CodeArtifactCategory,
   DocumentArtifact,
+  DocumentAvailabilityFilter,
+  LinkArtifact,
+  LinkArtifactCategory,
   ConversationFile,
   ConversationSummary,
   MessageBlock,
   MessageBookmark,
+  SavedSearch,
   SearchFieldScope,
   SearchFilters,
   ViewerState,
@@ -71,12 +80,14 @@ import {
   loadCodeArtifacts,
   loadDocumentArtifacts,
   loadAssetArtifacts,
+  loadLinkArtifacts,
   loadDocumentArtifactContent,
   loadConversation,
   markRead,
   resolveArchiveAssetUrl,
   exportCodeSnippet as exportCodeSnippetDesktop,
   exportDocumentMarkdown as exportDocumentMarkdownDesktop,
+  exportRecoveryBundle,
   saveMessageBookmark,
   saveScrollPosition,
   saveViewerState,
@@ -95,15 +106,34 @@ import {
 import {
   assetDisplayName,
   assetFileExtension,
+  classifyCodeArtifactKind,
+  classifyLinkArtifactKind,
+  classifyUnresolvedAssetCause,
+  computeLineDiff,
   countAssetExtensions,
   countAssetKinds,
+  countCodeCategories,
   countCodeLanguages,
+  countDocumentAvailability,
   countDocumentTypes,
+  countLinkCategories,
+  countLinkDomains,
+  deriveCodeArtifactTitle,
+  deriveDocumentDisplayTitle,
   filterAssetArtifacts,
   filterCodeArtifacts,
   filterDocumentArtifacts,
+  filterLinkArtifacts,
+  findCodeRevisionsAndDuplicates,
+  findDocumentRevisions,
+  isRecoveredDocumentArtifact,
+  linkDisplayLabel,
   normalizeCodeLanguage,
+  normalizeLinkDomain,
+  sanitizeCodeLanguageToken,
+  sanitizeLinkUrl,
   selectedExplorerArtifact,
+  summarizeUnresolvedAssets,
   visibleExplorerRows,
 } from './artifactLogic';
 
@@ -121,7 +151,7 @@ const DEFAULT_FILTERS: SearchFilters = {
   minMessages: '',
   maxMessages: '',
 };
-type AppView = 'dashboard' | 'conversation' | 'code' | 'documents' | 'assets' | 'knowledge' | 'projects' | 'library';
+type AppView = 'dashboard' | 'conversation' | 'code' | 'documents' | 'assets' | 'links' | 'knowledge' | 'projects' | 'library';
 
 const DEFAULT_TAGS = ['WSL', 'Rust', 'Security', 'Docker', 'AI'];
 
@@ -133,6 +163,9 @@ function createEmptyKnowledgeState(): KnowledgeState {
     collectionItems: [],
     notes: [],
     favorites: [],
+    customTitles: {},
+    savedSearches: [],
+    assetTriage: {},
   };
 }
 
@@ -148,6 +181,9 @@ function readKnowledgeState(): KnowledgeState {
       collectionItems: parsed.collectionItems || [],
       notes: parsed.notes || [],
       favorites: parsed.favorites || [],
+      customTitles: parsed.customTitles || {},
+      savedSearches: parsed.savedSearches || [],
+      assetTriage: parsed.assetTriage || {},
     };
   } catch {
     return createEmptyKnowledgeState();
@@ -156,6 +192,16 @@ function readKnowledgeState(): KnowledgeState {
 
 function targetKey(target: KnowledgeTarget) {
   return `${target.targetType}:${target.targetId}`;
+}
+
+function resolveTargetTitle(
+  customTitles: Record<string, string> | undefined,
+  targetType: KnowledgeTarget['targetType'],
+  targetId: string,
+  fallbackTitle: string,
+) {
+  const custom = customTitles?.[`${targetType}:${targetId}`]?.trim();
+  return custom || fallbackTitle;
 }
 
 function createEmptyViewerState(): ViewerState {
@@ -532,6 +578,64 @@ function filterConversations(
   };
 }
 
+function hasActiveSearchFilters(filters: SearchFilters) {
+  return Boolean(
+    filters.query.trim()
+      || filters.fieldScope !== 'all'
+      || filters.regex
+      || filters.startDate
+      || filters.endDate
+      || filters.minMessages
+      || filters.maxMessages,
+  );
+}
+
+function extractSnippetAround(haystack: string, needle: string, radius = 36) {
+  const lower = haystack.toLowerCase();
+  const idx = lower.indexOf(needle.toLowerCase());
+  if (idx === -1) return '';
+  const start = Math.max(0, idx - radius);
+  const end = Math.min(haystack.length, idx + needle.length + radius);
+  const prefix = start > 0 ? '…' : '';
+  const suffix = end < haystack.length ? '…' : '';
+  return `${prefix}${haystack.slice(start, end).replace(/\s+/g, ' ').trim()}${suffix}`;
+}
+
+function explainConversationMatch(
+  conversation: ConversationSummary,
+  filters: SearchFilters,
+  artifacts: ArtifactSearchData | null,
+) {
+  const rawQuery = filters.query.trim();
+  if (!rawQuery) return '';
+  const plainTokens = tokenizeQuery(rawQuery)
+    .filter((token) => !token.value.includes(':'))
+    .map((token) => token.value.trim())
+    .filter(Boolean);
+  const needle = plainTokens[0] || rawQuery.split(':').pop()?.trim() || '';
+  if (!needle) return '';
+
+  if (conversation.title.toLowerCase().includes(needle.toLowerCase())) {
+    return 'Matched in title';
+  }
+  const codeText = getArtifactFieldText(conversation.id, 'code', artifacts);
+  if (codeText && codeText.toLowerCase().includes(needle.toLowerCase())) {
+    return `Code: ${extractSnippetAround(codeText, needle, 28)}`;
+  }
+  const docText = getArtifactFieldText(conversation.id, 'documents', artifacts);
+  if (docText && docText.toLowerCase().includes(needle.toLowerCase())) {
+    return `Doc: ${extractSnippetAround(docText, needle, 28)}`;
+  }
+  const linkText = getArtifactFieldText(conversation.id, 'links', artifacts);
+  if (linkText && linkText.toLowerCase().includes(needle.toLowerCase())) {
+    return `Link: ${extractSnippetAround(linkText, needle, 28)}`;
+  }
+  if (conversation.searchText && conversation.searchText.toLowerCase().includes(needle.toLowerCase())) {
+    return `Message: ${extractSnippetAround(conversation.searchText, needle, 28)}`;
+  }
+  return '';
+}
+
 function filterMessagesForAssetSearch(messages: ArchiveMessage[], filters: SearchFilters) {
   if (filters.fieldScope !== 'assets' || !filters.query.trim() || filters.regex) return messages;
   const terms = tokenizeQuery(filters.query).filter((token) => !token.value.includes(':'));
@@ -799,18 +903,23 @@ function AssetGrid({ assets, onOpen }: { assets: ArchiveAsset[]; onOpen: (asset:
 function MessageView({
   message,
   bookmarked,
+  highlighted,
   onBookmark,
   onCopyAnchor,
   onOpenAsset,
 }: {
   message: ArchiveMessage;
   bookmarked: boolean;
+  highlighted?: boolean;
   onBookmark: (message: ArchiveMessage) => void;
   onCopyAnchor: (message: ArchiveMessage) => void;
   onOpenAsset: (asset: ArchiveAsset) => void;
 }) {
   return (
-    <article className={`message message-${message.role}${message.hidden ? ' hidden-message' : ''}`} id={`message-${message.id}`}>
+    <article
+      className={`message message-${message.role}${message.hidden ? ' hidden-message' : ''}${highlighted ? ' message-highlighted' : ''}`}
+      id={`message-${message.id}`}
+    >
       <div className="message-meta">
         <span className="role-dot" />
         <strong>{roleLabel(message.role)}</strong>
@@ -920,14 +1029,20 @@ function Sidebar({
   filters,
   regexError,
   viewerState,
+  savedSearches,
+  artifactSearchData,
   collapsed,
   onFilters,
+  onSaveSearch,
+  onDeleteSavedSearch,
+  onQueueConversations,
   onSelect,
   onToggleCollapsed,
   onHome,
   onCodeExplorer,
   onDocumentExplorer,
   onAssetExplorer,
+  onLinkExplorer,
   onKnowledge,
   onProjects,
   onLibrary,
@@ -939,14 +1054,20 @@ function Sidebar({
   filters: SearchFilters;
   regexError: string;
   viewerState: ViewerState;
+  savedSearches?: SavedSearch[];
+  artifactSearchData?: ArtifactSearchData | null;
   collapsed: boolean;
   onFilters: (filters: SearchFilters) => void;
+  onSaveSearch?: (filters: SearchFilters) => void;
+  onDeleteSavedSearch?: (id: string) => void;
+  onQueueConversations?: (conversations: ConversationSummary[]) => void;
   onSelect: (conversation: ConversationSummary) => void;
   onToggleCollapsed: () => void;
   onHome: () => void;
   onCodeExplorer: () => void;
   onDocumentExplorer: () => void;
   onAssetExplorer: () => void;
+  onLinkExplorer: () => void;
   onKnowledge: () => void;
   onProjects: () => void;
   onLibrary: () => void;
@@ -954,6 +1075,7 @@ function Sidebar({
   function updateFilter<K extends keyof SearchFilters>(key: K, value: SearchFilters[K]) {
     onFilters({ ...filters, [key]: value });
   }
+  const activeFilters = hasActiveSearchFilters(filters);
 
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
@@ -989,6 +1111,10 @@ function Sidebar({
             <button className={activeView === 'assets' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onAssetExplorer}>
               <Images size={16} />
               Assets
+            </button>
+            <button className={activeView === 'links' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onLinkExplorer}>
+              <Link2 size={16} />
+              Links
             </button>
             <button className={activeView === 'knowledge' ? 'toolbar-button active' : 'toolbar-button'} type="button" onClick={onKnowledge}>
               <FolderKanban size={16} />
@@ -1028,16 +1154,93 @@ function Sidebar({
             ))}
           </div>
           <div className="filter-row split">
-            <button
-              className={filters.regex ? 'filter-chip active' : 'filter-chip'}
-              type="button"
-              onClick={() => updateFilter('regex', !filters.regex)}
-            >
-              <Regex size={13} />
-              Regex
-            </button>
+            <div style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                className={filters.regex ? 'filter-chip active' : 'filter-chip'}
+                type="button"
+                onClick={() => updateFilter('regex', !filters.regex)}
+              >
+                <Regex size={13} />
+                Regex
+              </button>
+              {activeFilters && onSaveSearch ? (
+                <button
+                  className="filter-chip"
+                  type="button"
+                  onClick={() => onSaveSearch(filters)}
+                  title="Save current search and filter criteria as a reusable view"
+                >
+                  <Bookmark size={12} />
+                  Save view
+                </button>
+              ) : null}
+              {activeFilters && conversations.length > 0 && onQueueConversations ? (
+                <button
+                  className="filter-chip"
+                  type="button"
+                  onClick={() => onQueueConversations(conversations.slice(0, 100))}
+                  title="Queue filtered conversations into Batch Ingestion below"
+                >
+                  + Queue ({Math.min(conversations.length, 100)})
+                </button>
+              ) : null}
+            </div>
             <span>{regexError ? 'Invalid regex' : `${conversations.length.toLocaleString()} shown`}</span>
           </div>
+          {savedSearches && savedSearches.length > 0 ? (
+            <div className="filter-row" style={{ gap: 4 }}>
+              {savedSearches.map((saved) => (
+                <span
+                  key={saved.id}
+                  className="filter-chip"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, paddingRight: 4 }}
+                >
+                  <button
+                    type="button"
+                    style={{
+                      background: 'transparent',
+                      border: 0,
+                      color: 'inherit',
+                      padding: 0,
+                      font: 'inherit',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() =>
+                      onFilters({
+                        query: saved.query,
+                        fieldScope: saved.fieldScope,
+                        regex: saved.regex,
+                        startDate: saved.startDate,
+                        endDate: saved.endDate,
+                        minMessages: saved.minMessages,
+                        maxMessages: saved.maxMessages,
+                      })
+                    }
+                    title={`Saved view: ${saved.query || saved.fieldScope}`}
+                  >
+                    {saved.name}
+                  </button>
+                  {onDeleteSavedSearch ? (
+                    <button
+                      type="button"
+                      style={{
+                        background: 'transparent',
+                        border: 0,
+                        color: 'inherit',
+                        padding: '0 2px',
+                        cursor: 'pointer',
+                        opacity: 0.7,
+                      }}
+                      onClick={() => onDeleteSavedSearch(saved.id)}
+                      title="Remove saved view"
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          ) : null}
           {regexError ? <div className="filter-error">{regexError}</div> : null}
           <div className="range-grid">
             <label>
@@ -1075,25 +1278,35 @@ function Sidebar({
             {groupConversations(conversations).map(([month, grouped]) => (
               <section className="month-group" key={month}>
                 <h2>{month}</h2>
-                {grouped.map((conversation) => (
-                  <button
-                    className={conversation.id === selectedId ? 'conversation-row selected' : 'conversation-row'}
-                    type="button"
-                    key={conversation.id}
-                    onClick={() => onSelect(conversation)}
-                  >
-                    <span>
-                      {viewerState.pinned[conversation.id] ? <Pin size={12} /> : null}
-                      {viewerState.favorites[conversation.id] ? <Star size={12} /> : null}
-                      {conversation.title}
-                    </span>
-                    <small>
-                      {formatDate(getConversationTime(conversation), { month: 'short', day: 'numeric' })}
-                      {conversation.codeBlockCount ? ` - ${conversation.codeBlockCount} code` : ''}
-                      {conversation.assetCount ? ` - ${conversation.assetCount} media` : ''}
-                    </small>
-                  </button>
-                ))}
+                {grouped.map((conversation) => {
+                  const matchReason = filters.query.trim()
+                    ? explainConversationMatch(conversation, filters, artifactSearchData || null)
+                    : '';
+                  return (
+                    <button
+                      className={conversation.id === selectedId ? 'conversation-row selected' : 'conversation-row'}
+                      type="button"
+                      key={conversation.id}
+                      onClick={() => onSelect(conversation)}
+                    >
+                      <span>
+                        {viewerState.pinned[conversation.id] ? <Pin size={12} /> : null}
+                        {viewerState.favorites[conversation.id] ? <Star size={12} /> : null}
+                        {conversation.title}
+                      </span>
+                      <small>
+                        {formatDate(getConversationTime(conversation), { month: 'short', day: 'numeric' })}
+                        {conversation.codeBlockCount ? ` - ${conversation.codeBlockCount} code` : ''}
+                        {conversation.assetCount ? ` - ${conversation.assetCount} media` : ''}
+                      </small>
+                      {matchReason ? (
+                        <small style={{ color: 'var(--accent)', display: 'block', marginTop: 2 }}>
+                          {matchReason}
+                        </small>
+                      ) : null}
+                    </button>
+                  );
+                })}
               </section>
             ))}
           </nav>
@@ -1212,11 +1425,23 @@ function DashboardList({
 }
 
 function ArtifactDashboard({ artifacts }: { artifacts: ArtifactIndex | null }) {
-  const topLanguages = artifacts
-    ? Object.entries(artifacts.languageCounts)
+  const topLanguages = useMemo(() => {
+    if (!artifacts) return [];
+    if (artifacts.code && artifacts.code.length > 0) {
+      return countCodeLanguages(artifacts.code)
         .slice(0, 10)
-        .map(([language, count]) => ({ language, count }))
-    : [];
+        .map((item) => ({ language: item.name, count: item.count }));
+    }
+    const aggregated = new Map<string, number>();
+    for (const [rawLang, count] of Object.entries(artifacts.languageCounts)) {
+      const lang = sanitizeCodeLanguageToken(rawLang);
+      aggregated.set(lang, (aggregated.get(lang) || 0) + count);
+    }
+    return [...aggregated.entries()]
+      .map(([language, count]) => ({ language, count }))
+      .sort((a, b) => b.count - a.count || a.language.localeCompare(b.language))
+      .slice(0, 10);
+  }, [artifacts]);
 
   return (
     <section className="dashboard-section">
@@ -1248,8 +1473,18 @@ function ArtifactDashboard({ artifacts }: { artifacts: ArtifactIndex | null }) {
   );
 }
 
+const CODE_CATEGORY_LABELS: Record<CodeArtifactCategory, string> = {
+  code: 'Source code',
+  shell: 'Shell / command',
+  config: 'Config / data',
+  diagram: 'Diagram',
+  prose: 'Prose / text',
+};
+
 function CodeExplorer({
   artifacts,
+  initialSelectedId,
+  customTitles,
   onOpenSource,
   onOrganize,
   selectedTargets,
@@ -1258,6 +1493,8 @@ function CodeExplorer({
   onClearSelection,
 }: {
   artifacts: CodeArtifact[];
+  initialSelectedId?: string;
+  customTitles?: Record<string, string>;
   onOpenSource: (artifact: CodeArtifact) => void;
   onOrganize: (target: KnowledgeTarget) => void;
   selectedTargets?: KnowledgeTarget[];
@@ -1266,20 +1503,64 @@ function CodeExplorer({
   onClearSelection?: () => void;
 }) {
   const [query, setQuery] = useState('');
+  const [category, setCategory] = useState<CodeArtifactCategory | 'all'>('all');
   const [language, setLanguage] = useState('all');
-  const [selectedId, setSelectedId] = useState('');
+  const [selectedId, setSelectedId] = useState(initialSelectedId || '');
+
+  useEffect(() => {
+    if (initialSelectedId) {
+      setSelectedId(initialSelectedId);
+      setCategory('all');
+      setLanguage('all');
+      setQuery('');
+    }
+  }, [initialSelectedId]);
+
+  const categories = useMemo(() => {
+    return countCodeCategories(artifacts);
+  }, [artifacts]);
 
   const languages = useMemo(() => {
     return countCodeLanguages(artifacts);
   }, [artifacts]);
 
   const filtered = useMemo(() => {
-    return filterCodeArtifacts(artifacts, language, query);
-  }, [artifacts, language, query]);
+    return filterCodeArtifacts(artifacts, language, query, category);
+  }, [artifacts, category, language, query]);
 
   const selected = selectedExplorerArtifact(filtered, selectedId);
   const visibleRows = visibleExplorerRows(filtered);
   const highlighted = useMemo(() => (selected ? highlightCode(selected.text, selected.language) : null), [selected]);
+  const [compareTargetId, setCompareTargetId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCompareTargetId(null);
+  }, [selected?.id]);
+
+  const codeDisplayTitle = (item: CodeArtifact) =>
+    resolveTargetTitle(customTitles, 'code', item.id, deriveCodeArtifactTitle(item));
+
+  const { exactDuplicates, revisions } = useMemo(() => {
+    if (!selected) return { exactDuplicates: [], revisions: [] };
+    return findCodeRevisionsAndDuplicates(selected, artifacts);
+  }, [artifacts, selected]);
+
+  const compareTarget = useMemo(() => {
+    if (!compareTargetId) return null;
+    return artifacts.find((item) => item.id === compareTargetId) || null;
+  }, [artifacts, compareTargetId]);
+
+  const lineDiff = useMemo(() => {
+    if (!selected || !compareTarget) return null;
+    return computeLineDiff(compareTarget.text, selected.text);
+  }, [compareTarget, selected]);
+
+  const sameConversationCode = useMemo(() => {
+    if (!selected) return [];
+    return artifacts
+      .filter((item) => item.conversationId === selected.conversationId && item.id !== selected.id)
+      .slice(0, 14);
+  }, [artifacts, selected]);
 
   const selectedKeys = useMemo(() => {
     return new Set((selectedTargets || []).map(targetKey));
@@ -1307,7 +1588,7 @@ function CodeExplorer({
       <div className="explorer-toolbar">
         <label className="explorer-search">
           <Search size={16} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search code, language, title, or role" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search identifier, filename, code, language, conversation, or role" />
         </label>
         <span>
           {filtered.length.toLocaleString()} of {artifacts.length.toLocaleString()} snippets
@@ -1328,7 +1609,7 @@ function CodeExplorer({
                   targetType: 'code',
                   targetId: r.id,
                   conversationId: r.conversationId,
-                  title: `${codeArtifactLanguage(r)}: ${r.conversationTitle}`,
+                  title: codeDisplayTitle(r),
                 }));
                 onSelectAllVisible?.(targets);
               }}
@@ -1350,6 +1631,23 @@ function CodeExplorer({
       ) : null}
       <div className="explorer-grid">
         <aside className="explorer-facets">
+          <h3>Block kind</h3>
+          <button className={category === 'all' ? 'facet-row active' : 'facet-row'} type="button" onClick={() => setCategory('all')}>
+            <span>All kinds</span>
+            <strong>{artifacts.length.toLocaleString()}</strong>
+          </button>
+          {categories.map((item) => (
+            <button
+              className={category === item.name ? 'facet-row active' : 'facet-row'}
+              type="button"
+              key={item.name}
+              onClick={() => setCategory(item.name)}
+            >
+              <span>{CODE_CATEGORY_LABELS[item.name]}</span>
+              <strong>{item.count.toLocaleString()}</strong>
+            </button>
+          ))}
+          <h3>Language</h3>
           <button className={language === 'all' ? 'facet-row active' : 'facet-row'} type="button" onClick={() => setLanguage('all')}>
             <span>All languages</span>
             <strong>{artifacts.length.toLocaleString()}</strong>
@@ -1368,11 +1666,12 @@ function CodeExplorer({
         </aside>
         <div className="artifact-list">
           {visibleRows.map((item) => {
+            const displayTitle = codeDisplayTitle(item);
             const target: KnowledgeTarget = {
               targetType: 'code',
               targetId: item.id,
               conversationId: item.conversationId,
-              title: `${codeArtifactLanguage(item)}: ${item.conversationTitle}`,
+              title: displayTitle,
             };
             const isChecked = selectedKeys.has(targetKey(target));
             return (
@@ -1401,10 +1700,10 @@ function CodeExplorer({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Code2 size={14} />
-                    {item.conversationTitle}
+                    {displayTitle}
                   </span>
                   <small>
-                    {codeArtifactLanguage(item)} - {roleLabel(item.role)} - {formatDate(item.createTime)}
+                    {codeArtifactLanguage(item)} · {item.conversationTitle} · {formatDate(item.createTime)}
                   </small>
                   <p>{item.preview}</p>
                 </div>
@@ -1421,16 +1720,16 @@ function CodeExplorer({
             <>
               <div className="artifact-detail-head">
                 <div>
-                  <span>{codeArtifactLanguage(selected)}</span>
-                  <h3>{selected.conversationTitle}</h3>
+                  <span>{codeArtifactLanguage(selected)} · {CODE_CATEGORY_LABELS[classifyCodeArtifactKind(selected)]}</span>
+                  <h3>{codeDisplayTitle(selected)}</h3>
                   <p>
-                    {roleLabel(selected.role)} - {formatDate(selected.createTime)} - {formatApproxSize(selected.text)}
+                    {selected.conversationTitle} · {roleLabel(selected.role)} · {formatDate(selected.createTime)} · {formatApproxSize(selected.text)}
                   </p>
                 </div>
                 <div className="artifact-actions">
-                  <button className="toolbar-button" type="button" onClick={() => onOrganize({ targetType: 'code', targetId: selected.id, conversationId: selected.conversationId, title: selected.preview || selected.conversationTitle })}>
+                  <button className="toolbar-button" type="button" onClick={() => onOrganize({ targetType: 'code', targetId: selected.id, conversationId: selected.conversationId, title: codeDisplayTitle(selected) })}>
                     <Tags size={16} />
-                    Organize
+                    Organize / Rename
                   </button>
                   <CopyButton value={selected.text} label="Copy snippet" />
                   <button className="toolbar-button" type="button" onClick={() => void exportCodeSnippet(selected)}>
@@ -1449,6 +1748,16 @@ function CodeExplorer({
                     <Code2 size={15} />
                     {selected.language || highlighted.language}
                   </span>
+                  {revisions.length > 0 ? (
+                    <button
+                      type="button"
+                      className={compareTarget ? 'filter-chip active' : 'filter-chip'}
+                      onClick={() => setCompareTargetId(compareTarget ? null : revisions[0].id)}
+                      title="Compare this snippet against its closest candidate revision"
+                    >
+                      {compareTarget ? 'Close diff' : `Compare (${revisions.length} rev${revisions.length === 1 ? '' : 's'})`}
+                    </button>
+                  ) : null}
                 </div>
                 <pre className={`language-${highlighted.language}`}>
                   <code
@@ -1457,6 +1766,156 @@ function CodeExplorer({
                   />
                 </pre>
               </section>
+
+              {compareTarget && lineDiff ? (
+                <div className="dashboard-section" style={{ marginTop: 14 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <h3 style={{ margin: 0 }}>
+                      Diff vs. {codeDisplayTitle(compareTarget)} ({formatDate(compareTarget.createTime)})
+                    </h3>
+                    <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12 }}>
+                      <span style={{ color: '#4ade80' }}>+{lineDiff.added} added</span>
+                      <span style={{ color: '#f87171' }}>-{lineDiff.removed} removed</span>
+                      <span>{lineDiff.unchanged} unchanged</span>
+                      <button
+                        type="button"
+                        className="toolbar-button"
+                        style={{ padding: '2px 8px', fontSize: 11 }}
+                        onClick={() => onOpenSource(compareTarget)}
+                      >
+                        Compared source
+                      </button>
+                      <button
+                        type="button"
+                        className="toolbar-button"
+                        style={{ padding: '2px 8px', fontSize: 11 }}
+                        onClick={() => setCompareTargetId(null)}
+                      >
+                        Close diff
+                      </button>
+                    </div>
+                  </div>
+                  <pre
+                    style={{
+                      marginTop: 8,
+                      maxHeight: 320,
+                      overflow: 'auto',
+                      padding: 10,
+                      borderRadius: 6,
+                      background: 'rgba(10, 14, 23, 0.75)',
+                      fontSize: 12,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {lineDiff.lines.map((line, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          background:
+                            line.type === 'add'
+                              ? 'rgba(34, 197, 94, 0.14)'
+                              : line.type === 'remove'
+                                ? 'rgba(239, 68, 68, 0.14)'
+                                : 'transparent',
+                          color:
+                            line.type === 'add'
+                              ? '#86efac'
+                              : line.type === 'remove'
+                                ? '#fca5a5'
+                                : 'inherit',
+                          padding: '0 6px',
+                          whiteSpace: 'pre-wrap',
+                        }}
+                      >
+                        {line.type === 'add' ? '+ ' : line.type === 'remove' ? '- ' : '  '}
+                        {line.text}
+                      </div>
+                    ))}
+                  </pre>
+                </div>
+              ) : null}
+
+              {revisions.length > 0 || exactDuplicates.length > 0 ? (
+                <div className="dashboard-section" style={{ marginTop: 14 }}>
+                  <h3>
+                    <Code2 size={15} />
+                    Versions & Duplicates ({revisions.length} revision{revisions.length === 1 ? '' : 's'}, {exactDuplicates.length} exact duplicate{exactDuplicates.length === 1 ? '' : 's'})
+                  </h3>
+                  <div className="dashboard-list">
+                    {revisions.map((rev) => (
+                      <div
+                        key={rev.id}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '6px 8px',
+                          borderRadius: 6,
+                          background: compareTargetId === rev.id ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setSelectedId(rev.id)}
+                          style={{ flex: 1, textAlign: 'left' }}
+                        >
+                          <span>Revision in "{rev.conversationTitle}"</span>
+                          <small>{formatDate(rev.createTime)} · {formatApproxSize(rev.text)}</small>
+                        </button>
+                        <div style={{ display: 'inline-flex', gap: 4 }}>
+                          <button
+                            type="button"
+                            className={compareTargetId === rev.id ? 'filter-chip active' : 'filter-chip'}
+                            onClick={() => setCompareTargetId(compareTargetId === rev.id ? null : rev.id)}
+                          >
+                            {compareTargetId === rev.id ? 'Comparing' : 'Diff'}
+                          </button>
+                          <button
+                            type="button"
+                            className="filter-chip"
+                            onClick={() => onOpenSource(rev)}
+                          >
+                            Source
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {exactDuplicates.map((dup) => (
+                      <button
+                        type="button"
+                        key={dup.id}
+                        onClick={() => onOpenSource(dup)}
+                        title="Byte-identical code block in another message"
+                      >
+                        <span>Exact copy in "{dup.conversationTitle}"</span>
+                        <small>{roleLabel(dup.role)} · {formatDate(dup.createTime)}</small>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {sameConversationCode.length > 0 ? (
+                <div className="dashboard-section" style={{ marginTop: 14 }}>
+                  <h3>
+                    <Code2 size={15} />
+                    Other code blocks in "{selected.conversationTitle}" ({sameConversationCode.length})
+                  </h3>
+                  <div className="dashboard-list">
+                    {sameConversationCode.map((sibling) => (
+                      <button
+                        type="button"
+                        key={sibling.id}
+                        onClick={() => setSelectedId(sibling.id)}
+                        title={sibling.preview}
+                      >
+                        <span>{codeDisplayTitle(sibling)}</span>
+                        <small>{codeArtifactLanguage(sibling)} · {formatApproxSize(sibling.text)}</small>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </>
           ) : (
             <p className="empty-note">Select a code snippet to inspect it.</p>
@@ -1469,6 +1928,8 @@ function CodeExplorer({
 
 function DocumentExplorer({
   artifacts,
+  initialSelectedId,
+  customTitles,
   onOpenSource,
   onOrganize,
   selectedTargets,
@@ -1477,6 +1938,8 @@ function DocumentExplorer({
   onClearSelection,
 }: {
   artifacts: DocumentArtifact[];
+  initialSelectedId?: string;
+  customTitles?: Record<string, string>;
   onOpenSource: (artifact: DocumentArtifact) => void;
   onOrganize: (target: KnowledgeTarget) => void;
   selectedTargets?: KnowledgeTarget[];
@@ -1485,22 +1948,51 @@ function DocumentExplorer({
   onClearSelection?: () => void;
 }) {
   const [query, setQuery] = useState('');
+  const [availability, setAvailability] = useState<DocumentAvailabilityFilter>('all');
   const [documentType, setDocumentType] = useState('all');
-  const [selectedId, setSelectedId] = useState('');
+  const [selectedId, setSelectedId] = useState(initialSelectedId || '');
   const [content, setContent] = useState('');
   const [contentError, setContentError] = useState('');
   const contentCache = useRef(new Map<string, string>());
 
-  const types = useMemo(() => {
-    return countDocumentTypes(artifacts);
+  useEffect(() => {
+    if (initialSelectedId) {
+      setSelectedId(initialSelectedId);
+      setAvailability('all');
+      setDocumentType('all');
+      setQuery('');
+    }
+  }, [initialSelectedId]);
+
+  const availabilityCounts = useMemo(() => {
+    return countDocumentAvailability(artifacts);
   }, [artifacts]);
 
+  const types = useMemo(() => {
+    return countDocumentTypes(artifacts, availability);
+  }, [artifacts, availability]);
+
   const filtered = useMemo(() => {
-    return filterDocumentArtifacts(artifacts, documentType, query);
-  }, [artifacts, documentType, query]);
+    return filterDocumentArtifacts(artifacts, documentType, query, availability);
+  }, [artifacts, availability, documentType, query]);
 
   const selected = selectedExplorerArtifact(filtered, selectedId);
   const visibleRows = visibleExplorerRows(filtered);
+
+  const docDisplayTitle = (item: DocumentArtifact) =>
+    resolveTargetTitle(customTitles, 'document', item.id, deriveDocumentDisplayTitle(item));
+
+  const documentRevisions = useMemo(() => {
+    if (!selected) return [];
+    return findDocumentRevisions(selected, artifacts);
+  }, [artifacts, selected]);
+
+  const sameConversationDocs = useMemo(() => {
+    if (!selected) return [];
+    return artifacts
+      .filter((item) => item.conversationId === selected.conversationId && item.id !== selected.id)
+      .slice(0, 12);
+  }, [artifacts, selected]);
 
   const selectedKeys = useMemo(() => {
     return new Set((selectedTargets || []).map(targetKey));
@@ -1511,7 +2003,10 @@ function DocumentExplorer({
       if (selectedId) setSelectedId('');
       return;
     }
-    if (!filtered.some((item) => item.id === selectedId)) setSelectedId(filtered[0].id);
+    if (!filtered.some((item) => item.id === selectedId)) {
+      const firstRecovered = filtered.find((item) => isRecoveredDocumentArtifact(item));
+      setSelectedId((firstRecovered || filtered[0]).id);
+    }
   }, [filtered, selectedId]);
 
   useEffect(() => {
@@ -1575,7 +2070,7 @@ function DocumentExplorer({
                   targetType: 'document',
                   targetId: r.id,
                   conversationId: r.conversationId,
-                  title: r.title,
+                  title: docDisplayTitle(r),
                 }));
                 onSelectAllVisible?.(targets);
               }}
@@ -1597,8 +2092,31 @@ function DocumentExplorer({
       ) : null}
       <div className="explorer-grid">
         <aside className="explorer-facets">
+          <h3>Availability</h3>
+          <button
+            className={availability === 'all' ? 'facet-row active' : 'facet-row'}
+            type="button"
+            onClick={() => setAvailability('all')}
+          >
+            <span>All documents</span><strong>{availabilityCounts.all.toLocaleString()}</strong>
+          </button>
+          <button
+            className={availability === 'recovered' ? 'facet-row active' : 'facet-row'}
+            type="button"
+            onClick={() => setAvailability('recovered')}
+          >
+            <span>Recovered files</span><strong>{availabilityCounts.recovered.toLocaleString()}</strong>
+          </button>
+          <button
+            className={availability === 'pointer' ? 'facet-row active' : 'facet-row'}
+            type="button"
+            onClick={() => setAvailability('pointer')}
+          >
+            <span>Conversation context</span><strong>{availabilityCounts.pointer.toLocaleString()}</strong>
+          </button>
+          <h3 style={{ marginTop: 12 }}>Document type</h3>
           <button className={documentType === 'all' ? 'facet-row active' : 'facet-row'} type="button" onClick={() => setDocumentType('all')}>
-            <span>All documents</span><strong>{artifacts.length.toLocaleString()}</strong>
+            <span>All types</span><strong>{(availability === 'all' ? availabilityCounts.all : availability === 'recovered' ? availabilityCounts.recovered : availabilityCounts.pointer).toLocaleString()}</strong>
           </button>
           {types.map((item) => (
             <button className={documentType === item.name ? 'facet-row active' : 'facet-row'} type="button" key={item.name} onClick={() => setDocumentType(item.name)}>
@@ -1608,11 +2126,13 @@ function DocumentExplorer({
         </aside>
         <div className="artifact-list">
           {visibleRows.map((item) => {
+            const displayTitle = docDisplayTitle(item);
+            const recovered = isRecoveredDocumentArtifact(item);
             const target: KnowledgeTarget = {
               targetType: 'document',
               targetId: item.id,
               conversationId: item.conversationId,
-              title: item.title,
+              title: displayTitle,
             };
             const isChecked = selectedKeys.has(targetKey(target));
             return (
@@ -1640,9 +2160,11 @@ function DocumentExplorer({
                 ) : null}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <FileText size={14} />{item.title}
+                    <FileText size={14} />{displayTitle}
                   </span>
-                  <small>{item.documentType} - {roleLabel(item.role)} - {formatDate(item.createTime)}</small>
+                  <small>
+                    {item.documentType} · {recovered ? 'Recovered file' : 'Conversation context'} · {item.conversationTitle} · {formatDate(item.createTime)}
+                  </small>
                   <p>{item.preview}</p>
                 </div>
               </div>
@@ -1655,15 +2177,67 @@ function DocumentExplorer({
           {selected ? (
             <>
               <div className="artifact-detail-head">
-                <div><span>{selected.documentType}</span><h3>{selected.title}</h3><p>{selected.conversationTitle} - {roleLabel(selected.role)} - {formatDate(selected.createTime)}</p></div>
+                <div>
+                  <span>
+                    {selected.documentType} · {isRecoveredDocumentArtifact(selected) ? 'Recovered file' : 'Conversation context'}
+                  </span>
+                  <h3>{docDisplayTitle(selected)}</h3>
+                  <p>{selected.conversationTitle} · {roleLabel(selected.role)} · {formatDate(selected.createTime)}</p>
+                </div>
                 <div className="artifact-actions">
-                  <button className="toolbar-button" type="button" onClick={() => onOrganize({ targetType: 'document', targetId: selected.id, conversationId: selected.conversationId, title: selected.title })}><Tags size={16} />Organize</button>
+                  <button className="toolbar-button" type="button" onClick={() => onOrganize({ targetType: 'document', targetId: selected.id, conversationId: selected.conversationId, title: docDisplayTitle(selected) })}><Tags size={16} />Organize / Rename</button>
                   <CopyButton value={content} label="Copy document" />
                   <button className="toolbar-button" type="button" disabled={!content} onClick={() => void exportDocumentMarkdown(selected, content)}><Download size={16} />{selected.url ? 'Export original' : 'Export'}</button>
                   <button className="toolbar-button active" type="button" onClick={() => onOpenSource(selected)}><ArrowLeft size={16} />Source</button>
                 </div>
               </div>
               {contentError ? <div className="notice">{contentError}</div> : content ? <div className="document-preview"><MarkdownBlock text={content} /></div> : <p className="empty-note">Loading source document...</p>}
+              {documentRevisions.length > 0 ? (
+                <div className="dashboard-section" style={{ marginTop: 14 }}>
+                  <h3>
+                    <FileText size={15} />
+                    Candidate revisions of "{selected.title}" ({documentRevisions.length})
+                  </h3>
+                  <div className="dashboard-list">
+                    {documentRevisions.map((rev) => (
+                      <button
+                        type="button"
+                        key={rev.id}
+                        onClick={() => setSelectedId(rev.id)}
+                        title={rev.preview}
+                      >
+                        <span>{docDisplayTitle(rev)}</span>
+                        <small>
+                          {formatDate(rev.createTime)} · {isRecoveredDocumentArtifact(rev) ? 'Recovered file' : 'Conversation context'}
+                        </small>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {sameConversationDocs.length > 0 ? (
+                <div className="dashboard-section" style={{ marginTop: 14 }}>
+                  <h3>
+                    <FileText size={15} />
+                    Other documents in "{selected.conversationTitle}" ({sameConversationDocs.length})
+                  </h3>
+                  <div className="dashboard-list">
+                    {sameConversationDocs.map((sibling) => (
+                      <button
+                        type="button"
+                        key={sibling.id}
+                        onClick={() => setSelectedId(sibling.id)}
+                        title={sibling.preview}
+                      >
+                        <span>{docDisplayTitle(sibling)}</span>
+                        <small>
+                          {sibling.documentType} · {isRecoveredDocumentArtifact(sibling) ? 'Recovered file' : 'Conversation context'}
+                        </small>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </>
           ) : <p className="empty-note">Select a document to inspect it.</p>}
         </section>
@@ -1682,6 +2256,11 @@ function ArtifactImage({ asset, className = '' }: { asset: AssetArtifact; classN
 
 function AssetExplorer({
   artifacts,
+  initialSelectedId,
+  customTitles,
+  assetTriage,
+  onUpdateAssetTriage,
+  onBulkTriageMissingDalle,
   onOpenSource,
   onOpenAsset,
   onOrganize,
@@ -1691,6 +2270,11 @@ function AssetExplorer({
   onClearSelection,
 }: {
   artifacts: AssetArtifact[];
+  initialSelectedId?: string;
+  customTitles?: Record<string, string>;
+  assetTriage?: Record<string, AssetTriageStatus>;
+  onUpdateAssetTriage?: (assetId: string, status: AssetTriageStatus) => void;
+  onBulkTriageMissingDalle?: () => void;
   onOpenSource: (artifact: AssetArtifact) => void;
   onOpenAsset: (artifact: AssetArtifact) => void;
   onOrganize: (target: KnowledgeTarget) => void;
@@ -1702,10 +2286,22 @@ function AssetExplorer({
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState('all');
   const [extension, setExtension] = useState('all');
-  const [selectedId, setSelectedId] = useState('');
+  const [selectedId, setSelectedId] = useState(initialSelectedId || '');
+
+  useEffect(() => {
+    if (initialSelectedId) {
+      setSelectedId(initialSelectedId);
+      setKind('all');
+      setExtension('all');
+      setQuery('');
+    }
+  }, [initialSelectedId]);
   const counts = useMemo(() => {
     return countAssetKinds(artifacts);
   }, [artifacts]);
+  const unresolvedSummary = useMemo(() => {
+    return summarizeUnresolvedAssets(artifacts, assetTriage);
+  }, [artifacts, assetTriage]);
   const extensions = useMemo(() => {
     return countAssetExtensions(artifacts);
   }, [artifacts]);
@@ -1714,6 +2310,9 @@ function AssetExplorer({
   }, [artifacts, extension, kind, query]);
   const selected = selectedExplorerArtifact(filtered, selectedId);
   const visibleRows = visibleExplorerRows(filtered);
+
+  const assetTitle = (item: AssetArtifact) =>
+    resolveTargetTitle(customTitles, 'asset', item.id, assetDisplayName(item));
 
   const selectedKeys = useMemo(() => {
     return new Set((selectedTargets || []).map(targetKey));
@@ -1752,7 +2351,7 @@ function AssetExplorer({
                   targetType: 'asset',
                   targetId: r.id,
                   conversationId: r.conversationId,
-                  title: assetDisplayName(r),
+                  title: assetTitle(r),
                 }));
                 onSelectAllVisible?.(targets);
               }}
@@ -1786,11 +2385,12 @@ function AssetExplorer({
         </aside>
         <div className="artifact-list asset-artifact-list">
           {visibleRows.map((item) => {
+            const displayTitle = assetTitle(item);
             const target: KnowledgeTarget = {
               targetType: 'asset',
               targetId: item.id,
               conversationId: item.conversationId,
-              title: assetDisplayName(item),
+              title: displayTitle,
             };
             const isChecked = selectedKeys.has(targetKey(target));
             return (
@@ -1818,7 +2418,7 @@ function AssetExplorer({
                 ) : null}
                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                   {item.kind === 'missing' ? <div className="asset-image-fallback"><FileImage size={22} /><span>Missing</span></div> : <ArtifactImage asset={item} />}
-                  <strong>{assetDisplayName(item)}</strong>
+                  <strong>{displayTitle}</strong>
                   <small>{assetFileExtension(item)} - {item.conversationTitle}</small>
                 </div>
               </div>
@@ -1831,22 +2431,450 @@ function AssetExplorer({
           {selected ? (
             <>
               <div className="artifact-detail-head">
-                <div><span>{selected.kind} - {assetFileExtension(selected)}</span><h3>{assetDisplayName(selected)}</h3><p>{selected.conversationTitle} - {roleLabel(selected.role)} - {formatDate(selected.createTime)}</p></div>
+                <div><span>{selected.kind} - {assetFileExtension(selected)}</span><h3>{assetTitle(selected)}</h3><p>{selected.conversationTitle} - {roleLabel(selected.role)} - {formatDate(selected.createTime)}</p></div>
                 <div className="artifact-actions">
-                  <button className="toolbar-button" type="button" onClick={() => onOrganize({ targetType: 'asset', targetId: selected.id, conversationId: selected.conversationId, title: assetDisplayName(selected) })}><Tags size={16} />Organize</button>
+                  <button className="toolbar-button" type="button" onClick={() => onOrganize({ targetType: 'asset', targetId: selected.id, conversationId: selected.conversationId, title: assetTitle(selected) })}><Tags size={16} />Organize / Rename</button>
                   <CopyButton value={selected.original} label="Copy pointer" />
                   {selected.kind !== 'missing' ? <button className="toolbar-button" type="button" onClick={() => onOpenAsset(selected)}><Eye size={16} />Full size</button> : null}
                   <button className="toolbar-button active" type="button" onClick={() => onOpenSource(selected)}><ArrowLeft size={16} />Source</button>
                 </div>
               </div>
               {selected.kind === 'missing' ? (
-                <div className="missing-asset-diagnostic"><FileImage size={34} /><h4>Local asset not found</h4><p>This pointer was present in the conversation export but no matching file was available during import.</p><code>{selected.original}</code></div>
+                <div className="missing-asset-diagnostic">
+                  <FileImage size={34} />
+                  <h4>
+                    Local asset not found (
+                    {classifyUnresolvedAssetCause(selected) === 'dalle_webp'
+                      ? 'DALL-E WebP omitted from export'
+                      : 'Upload omitted from export'}
+                    )
+                  </h4>
+                  <p>
+                    This pointer was present in the conversation export, but OpenAI did not include the binary file in the export zip.
+                    Triage status: <strong>{assetTriage?.[selected.id] || 'unreviewed'}</strong>
+                  </p>
+                  <code>{selected.original}</code>
+                  {onUpdateAssetTriage ? (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                      <button
+                        type="button"
+                        className={assetTriage?.[selected.id] === 'unrecoverable' ? 'filter-chip active' : 'filter-chip'}
+                        onClick={() => onUpdateAssetTriage(selected.id, 'unrecoverable')}
+                      >
+                        Mark unrecoverable (Skip)
+                      </button>
+                      <button
+                        type="button"
+                        className={(!assetTriage?.[selected.id] || assetTriage?.[selected.id] === 'unreviewed') ? 'filter-chip active' : 'filter-chip'}
+                        onClick={() => onUpdateAssetTriage(selected.id, 'unreviewed')}
+                      >
+                        Mark unreviewed
+                      </button>
+                      {unresolvedSummary.dalleWebp > 0 && onBulkTriageMissingDalle ? (
+                        <button
+                          type="button"
+                          className="filter-chip"
+                          onClick={onBulkTriageMissingDalle}
+                          title="Mark all missing DALL-E .webp pointers as unrecoverable so they don't clutter unreviewed counts"
+                        >
+                          Skip all missing DALL-E WebPs ({unresolvedSummary.dalleWebp})
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               ) : (
                 <button className="asset-detail-preview" type="button" onClick={() => onOpenAsset(selected)}><ArtifactImage asset={selected} /></button>
               )}
               <dl className="asset-metadata"><dt>Stored label</dt><dd>{selected.label}</dd><dt>File type</dt><dd>{assetFileExtension(selected)}</dd><dt>Original</dt><dd>{selected.original}</dd><dt>Resolved URL</dt><dd>{selected.url || 'Not resolved'}</dd>{selected.width ? <><dt>Dimensions</dt><dd>{selected.width} x {selected.height || '?'}</dd></> : null}</dl>
             </>
           ) : <p className="empty-note">Select an asset to inspect it.</p>}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+const LINK_CATEGORY_LABELS: Record<LinkArtifactCategory, string> = {
+  web: 'Websites & services',
+  repo: 'Repos & packages',
+  docs: 'Docs & reference',
+  local: 'Local & template',
+};
+
+function LinkExplorer({
+  artifacts,
+  initialSelectedId,
+  customTitles,
+  onOpenSource,
+  onOrganize,
+  selectedTargets,
+  onToggleSelectTarget,
+  onSelectAllVisible,
+  onClearSelection,
+}: {
+  artifacts: LinkArtifact[];
+  initialSelectedId?: string;
+  customTitles?: Record<string, string>;
+  onOpenSource: (artifact: LinkArtifact) => void;
+  onOrganize: (target: KnowledgeTarget) => void;
+  selectedTargets?: KnowledgeTarget[];
+  onToggleSelectTarget?: (target: KnowledgeTarget) => void;
+  onSelectAllVisible?: (targets: KnowledgeTarget[]) => void;
+  onClearSelection?: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState<LinkArtifactCategory | 'all'>('all');
+  const [domain, setDomain] = useState('all');
+  const [domainFilter, setDomainFilter] = useState('');
+  const [selectedId, setSelectedId] = useState(initialSelectedId || '');
+
+  useEffect(() => {
+    if (initialSelectedId) {
+      setSelectedId(initialSelectedId);
+      setCategory('all');
+      setDomain('all');
+      setQuery('');
+    }
+  }, [initialSelectedId]);
+
+  const categories = useMemo(() => countLinkCategories(artifacts), [artifacts]);
+  const domains = useMemo(() => {
+    const all = countLinkDomains(artifacts, category);
+    const needle = domainFilter.trim().toLowerCase();
+    if (!needle) return all;
+    return all.filter((item) => item.name.toLowerCase().includes(needle));
+  }, [artifacts, category, domainFilter]);
+
+  const filtered = useMemo(() => {
+    return filterLinkArtifacts(artifacts, domain, query, category);
+  }, [artifacts, category, domain, query]);
+
+  const selected = selectedExplorerArtifact(filtered, selectedId);
+  const visibleRows = visibleExplorerRows(filtered);
+
+  const linkTitle = (item: LinkArtifact) =>
+    resolveTargetTitle(customTitles, 'link', item.id, linkDisplayLabel(item));
+
+  const selectedKeys = useMemo(() => {
+    return new Set((selectedTargets || []).map(targetKey));
+  }, [selectedTargets]);
+
+  useEffect(() => {
+    if (!filtered.length) {
+      if (selectedId) setSelectedId('');
+      return;
+    }
+    if (!filtered.some((item) => item.id === selectedId)) setSelectedId(filtered[0].id);
+  }, [filtered, selectedId]);
+
+  const selectedCleanUrl = selected ? sanitizeLinkUrl(selected.url) : '';
+  const selectedDomain = selected ? normalizeLinkDomain(selected) : '';
+  const selectedLabel = selected ? linkTitle(selected) : '';
+  const selectedKind = selected ? classifyLinkArtifactKind(selected) : 'web';
+
+  const sameUrlLinks = useMemo(() => {
+    if (!selected || !selectedCleanUrl) return [];
+    return artifacts
+      .filter((item) => item.id !== selected.id && sanitizeLinkUrl(item.url) === selectedCleanUrl)
+      .slice(0, 12);
+  }, [artifacts, selected, selectedCleanUrl]);
+
+  const sameDomainLinks = useMemo(() => {
+    if (!selected || !selectedDomain) return [];
+    const seenUrls = new Set<string>([selectedCleanUrl]);
+    const list: LinkArtifact[] = [];
+    for (const item of artifacts) {
+      if (item.id === selected.id) continue;
+      if (normalizeLinkDomain(item) !== selectedDomain) continue;
+      const clean = sanitizeLinkUrl(item.url);
+      if (seenUrls.has(clean)) continue;
+      seenUrls.add(clean);
+      list.push(item);
+      if (list.length >= 16) break;
+    }
+    return list;
+  }, [artifacts, selected, selectedCleanUrl, selectedDomain]);
+
+  return (
+    <section className="explorer link-explorer">
+      <div className="explorer-heading">
+        <div className="brand-mark large"><Link2 size={24} /></div>
+        <div><p>Artifact explorer</p><h2>Link Explorer</h2></div>
+      </div>
+      <div className="explorer-toolbar">
+        <label className="explorer-search">
+          <Search size={16} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search URL, domain, label, conversation title, or role"
+          />
+        </label>
+        <span>{filtered.length.toLocaleString()} of {artifacts.length.toLocaleString()} links</span>
+      </div>
+      {onToggleSelectTarget ? (
+        <div className="explorer-selection-banner">
+          <span>
+            <strong>{selectedTargets?.length || 0}</strong> items queued for Batch Ingestion below
+          </span>
+          <div className="explorer-selection-actions">
+            <button
+              type="button"
+              className="toolbar-button"
+              style={{ padding: '2px 8px', fontSize: 11 }}
+              onClick={() => {
+                const targets: KnowledgeTarget[] = visibleRows.map((r) => ({
+                  targetType: 'link',
+                  targetId: r.id,
+                  conversationId: r.conversationId,
+                  title: linkTitle(r),
+                }));
+                onSelectAllVisible?.(targets);
+              }}
+            >
+              Select visible ({visibleRows.length})
+            </button>
+            {selectedTargets && selectedTargets.length > 0 ? (
+              <button
+                type="button"
+                className="toolbar-button"
+                style={{ padding: '2px 8px', fontSize: 11 }}
+                onClick={onClearSelection}
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      <div className="explorer-grid">
+        <aside className="explorer-facets">
+          <h3>Link kind</h3>
+          <button
+            className={category === 'all' ? 'facet-row active' : 'facet-row'}
+            type="button"
+            onClick={() => {
+              setCategory('all');
+              setDomain('all');
+            }}
+          >
+            <span>All links</span><strong>{artifacts.length.toLocaleString()}</strong>
+          </button>
+          {categories.map((item) => (
+            <button
+              className={category === item.name ? 'facet-row active' : 'facet-row'}
+              type="button"
+              key={item.name}
+              onClick={() => {
+                setCategory(item.name);
+                setDomain('all');
+              }}
+            >
+              <span>{LINK_CATEGORY_LABELS[item.name]}</span><strong>{item.count.toLocaleString()}</strong>
+            </button>
+          ))}
+          <h3 style={{ marginTop: 12 }}>Domains</h3>
+          <label className="search-box" style={{ marginBottom: 6, padding: '4px 8px' }}>
+            <Search size={13} />
+            <input
+              value={domainFilter}
+              onChange={(event) => setDomainFilter(event.target.value)}
+              placeholder="Filter domains..."
+              style={{ fontSize: 12 }}
+            />
+          </label>
+          <button
+            className={domain === 'all' ? 'facet-row active' : 'facet-row'}
+            type="button"
+            onClick={() => setDomain('all')}
+          >
+            <span>All domains</span><strong>{countLinkDomains(artifacts, category).length.toLocaleString()}</strong>
+          </button>
+          {domains.slice(0, 60).map((item) => (
+            <button
+              className={domain === item.name ? 'facet-row active' : 'facet-row'}
+              type="button"
+              key={item.name}
+              onClick={() => setDomain(item.name)}
+            >
+              <span>{item.name}</span><strong>{item.count.toLocaleString()}</strong>
+            </button>
+          ))}
+        </aside>
+        <div className="artifact-list">
+          {visibleRows.map((item) => {
+            const cleanDomain = normalizeLinkDomain(item);
+            const cleanUrl = sanitizeLinkUrl(item.url);
+            const displayLabel = linkTitle(item);
+            const itemKind = classifyLinkArtifactKind(item);
+            const target: KnowledgeTarget = {
+              targetType: 'link',
+              targetId: item.id,
+              conversationId: item.conversationId,
+              title: displayLabel,
+            };
+            const isChecked = selectedKeys.has(targetKey(target));
+            return (
+              <div
+                key={item.id}
+                className={selected?.id === item.id ? 'artifact-row selected' : 'artifact-row'}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+                onClick={() => setSelectedId(item.id)}
+              >
+                {onToggleSelectTarget ? (
+                  <div
+                    className="matrix-checkbox-cell"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSelectTarget(target);
+                    }}
+                    title="Queue link for batch ingestion"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => {}}
+                    />
+                  </div>
+                ) : null}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Globe size={14} />{displayLabel}
+                  </span>
+                  <small>
+                    {cleanDomain} · {LINK_CATEGORY_LABELS[itemKind]} · {item.conversationTitle} · {formatDate(item.createTime)}
+                  </small>
+                  <p>{cleanUrl}</p>
+                </div>
+              </div>
+            );
+          })}
+          {filtered.length > visibleRows.length ? (
+            <p className="list-limit-note">
+              Showing first {visibleRows.length.toLocaleString()} matches. Narrow the search, link kind, or domain.
+            </p>
+          ) : null}
+          {!filtered.length ? <p className="empty-note">No links match those filters.</p> : null}
+        </div>
+        <section className="artifact-detail">
+          {selected ? (
+            <>
+              <div className="artifact-detail-head">
+                <div>
+                  <span>{selectedDomain} · {LINK_CATEGORY_LABELS[selectedKind]}</span>
+                  <h3>{selectedLabel}</h3>
+                  <p>{selected.conversationTitle} - {roleLabel(selected.role)} - {formatDate(selected.createTime)}</p>
+                </div>
+                <div className="artifact-actions">
+                  <a
+                    className="toolbar-button"
+                    href={selectedCleanUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Open URL in browser"
+                  >
+                    <ExternalLink size={16} />
+                    Open URL
+                  </a>
+                  <CopyButton value={selectedCleanUrl} label="Copy URL" />
+                  <CopyButton value={`[${selectedLabel}](${selectedCleanUrl})`} label="Copy MD" />
+                  <button
+                    className="toolbar-button"
+                    type="button"
+                    onClick={() =>
+                      onOrganize({
+                        targetType: 'link',
+                        targetId: selected.id,
+                        conversationId: selected.conversationId,
+                        title: selectedLabel,
+                      })
+                    }
+                  >
+                    <Tags size={16} />
+                    Organize / Rename
+                  </button>
+                  <button
+                    className="toolbar-button active"
+                    type="button"
+                    onClick={() => onOpenSource(selected)}
+                  >
+                    <ArrowLeft size={16} />
+                    Source
+                  </button>
+                </div>
+              </div>
+              <dl className="asset-metadata">
+                <dt>Clean URL</dt>
+                <dd style={{ wordBreak: 'break-all' }}>
+                  <a href={selectedCleanUrl} target="_blank" rel="noreferrer">{selectedCleanUrl}</a>
+                </dd>
+                <dt>Domain</dt>
+                <dd>
+                  <button
+                    type="button"
+                    className="filter-chip active"
+                    onClick={() => setDomain(selectedDomain)}
+                    title="Filter Link Explorer to this domain"
+                  >
+                    {selectedDomain}
+                  </button>
+                </dd>
+                <dt>Category</dt>
+                <dd>{LINK_CATEGORY_LABELS[selectedKind]}</dd>
+                <dt>Stored label</dt>
+                <dd style={{ wordBreak: 'break-all' }}>{selected.label}</dd>
+                <dt>Conversation</dt>
+                <dd>{selected.conversationTitle}</dd>
+              </dl>
+
+              {sameUrlLinks.length > 0 ? (
+                <div className="dashboard-section" style={{ marginTop: 14 }}>
+                  <h3>
+                    <Link2 size={15} />
+                    Also referenced in {sameUrlLinks.length} other message{sameUrlLinks.length === 1 ? '' : 's'}
+                  </h3>
+                  <div className="dashboard-list">
+                    {sameUrlLinks.map((other) => (
+                      <button
+                        type="button"
+                        key={other.id}
+                        onClick={() => onOpenSource(other)}
+                        title="Jump to this message in its conversation"
+                      >
+                        <span>{other.conversationTitle}</span>
+                        <small>{roleLabel(other.role)} · {formatDate(other.createTime)}</small>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {sameDomainLinks.length > 0 ? (
+                <div className="dashboard-section" style={{ marginTop: 14 }}>
+                  <h3>
+                    <Globe size={15} />
+                    Other URLs on {selectedDomain} ({sameDomainLinks.length})
+                  </h3>
+                  <div className="dashboard-list">
+                    {sameDomainLinks.map((other) => (
+                      <button
+                        type="button"
+                        key={other.id}
+                        onClick={() => setSelectedId(other.id)}
+                        title={sanitizeLinkUrl(other.url)}
+                      >
+                        <span>{linkTitle(other)}</span>
+                        <small>{other.conversationTitle} · {formatDate(other.createTime)}</small>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <p className="empty-note">Select a link to inspect its URL, domain, and conversations.</p>
+          )}
         </section>
       </div>
     </section>
@@ -1921,6 +2949,7 @@ function Header({
   favorite,
   pinned,
   read,
+  backLabel = 'Dashboard',
   onShowHidden,
   onBack,
   onFavorite,
@@ -1936,6 +2965,7 @@ function Header({
   favorite: boolean;
   pinned: boolean;
   read: boolean;
+  backLabel?: string;
   onShowHidden: (value: boolean) => void;
   onBack: () => void;
   onFavorite: () => void;
@@ -1959,7 +2989,7 @@ function Header({
           {conversation ? (
             <button className="text-action" type="button" onClick={onBack}>
               <ArrowLeft size={15} />
-              Dashboard
+              {backLabel}
             </button>
           ) : (
             <CalendarDays size={17} />
@@ -2034,14 +3064,18 @@ function KnowledgeOrganizer({
   target,
   state,
   onChange,
+  onRenameTarget,
   onClose,
 }: {
   target: KnowledgeTarget;
   state: KnowledgeState;
   onChange: (state: KnowledgeState) => void;
+  onRenameTarget?: (nextTitle: string) => void;
   onClose: () => void;
 }) {
   const key = targetKey(target);
+  const currentTitle = resolveTargetTitle(state.customTitles, target.targetType, target.targetId, target.title);
+  const [customTitle, setCustomTitle] = useState(currentTitle);
   const [tagName, setTagName] = useState('');
   const [collectionName, setCollectionName] = useState('');
   const [noteBody, setNoteBody] = useState('');
@@ -2049,6 +3083,44 @@ function KnowledgeOrganizer({
   const linkedCollections = new Set(state.collectionItems.filter((item) => targetKey(item) === key).map((item) => item.collectionId));
   const favorite = state.favorites.some((item) => targetKey(item) === key);
   const notes = state.notes.filter((item) => targetKey(item) === key);
+  const hasCustomTitle = Boolean(state.customTitles?.[key]?.trim());
+
+  useEffect(() => {
+    setCustomTitle(resolveTargetTitle(state.customTitles, target.targetType, target.targetId, target.title));
+  }, [key, state.customTitles, target.targetId, target.targetType, target.title]);
+
+  const effectiveTarget: KnowledgeTarget = {
+    ...target,
+    title: currentTitle,
+  };
+
+  function applyRename(nextRawTitle: string) {
+    const trimmed = nextRawTitle.trim();
+    const nextCustomTitles = { ...(state.customTitles || {}) };
+    if (trimmed) {
+      nextCustomTitles[key] = trimmed;
+    } else {
+      delete nextCustomTitles[key];
+    }
+    const resolvedTitle = trimmed || target.title;
+    onChange({
+      ...state,
+      customTitles: nextCustomTitles,
+      favorites: state.favorites.map((item) =>
+        targetKey(item) === key ? { ...item, title: resolvedTitle } : item,
+      ),
+      tagLinks: state.tagLinks.map((item) =>
+        targetKey(item) === key ? { ...item, title: resolvedTitle } : item,
+      ),
+      collectionItems: state.collectionItems.map((item) =>
+        targetKey(item) === key ? { ...item, title: resolvedTitle } : item,
+      ),
+      notes: state.notes.map((item) =>
+        targetKey(item) === key ? { ...item, title: resolvedTitle } : item,
+      ),
+    });
+    onRenameTarget?.(resolvedTitle);
+  }
 
   function toggleTag(tagId: number) {
     const exists = linkedTags.has(tagId);
@@ -2056,7 +3128,7 @@ function KnowledgeOrganizer({
       ...state,
       tagLinks: exists
         ? state.tagLinks.filter((item) => !(targetKey(item) === key && item.tagId === tagId))
-        : [...state.tagLinks, { ...target, tagId }],
+        : [...state.tagLinks, { ...effectiveTarget, tagId }],
     });
   }
 
@@ -2066,16 +3138,47 @@ function KnowledgeOrganizer({
       ...state,
       collectionItems: exists
         ? state.collectionItems.filter((item) => !(targetKey(item) === key && item.collectionId === collectionId))
-        : [...state.collectionItems, { ...target, collectionId, createdAt: Date.now() }],
+        : [...state.collectionItems, { ...effectiveTarget, collectionId, createdAt: Date.now() }],
     });
   }
 
   return (
-    <div className="knowledge-overlay" role="dialog" aria-modal="true" aria-label={`Organize ${target.title}`}>
+    <div className="knowledge-overlay" role="dialog" aria-modal="true" aria-label={`Organize ${currentTitle}`}>
       <section className="knowledge-organizer">
         <div className="knowledge-head">
-          <div><span>{target.targetType}</span><h2>{target.title}</h2></div>
+          <div><span>{target.targetType}</span><h2>{currentTitle}</h2></div>
           <button className="icon-only" type="button" onClick={onClose} title="Close"><X size={18} /></button>
+        </div>
+        <div className="knowledge-section">
+          <h3><Type size={15} />Display name</h3>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              applyRename(customTitle);
+            }}
+          >
+            <input
+              value={customTitle}
+              onChange={(event) => setCustomTitle(event.target.value)}
+              placeholder="Give this item a clear custom name..."
+              aria-label="Custom display name"
+            />
+            <button className="toolbar-button active" type="submit">Save name</button>
+            {hasCustomTitle ? (
+              <button
+                className="toolbar-button"
+                type="button"
+                onClick={() => {
+                  setCustomTitle('');
+                  applyRename('');
+                }}
+                title="Reset to default title"
+              >
+                <RotateCcw size={14} />
+                Reset
+              </button>
+            ) : null}
+          </form>
         </div>
         <button
           className={favorite ? 'toolbar-button active' : 'toolbar-button'}
@@ -2084,7 +3187,7 @@ function KnowledgeOrganizer({
             ...state,
             favorites: favorite
               ? state.favorites.filter((item) => targetKey(item) !== key)
-              : [{ ...target, createdAt: Date.now() }, ...state.favorites],
+              : [{ ...effectiveTarget, createdAt: Date.now() }, ...state.favorites],
           })}
         ><Star size={16} />{favorite ? 'Favorited' : 'Favorite'}</button>
         <div className="knowledge-section">
@@ -2097,7 +3200,7 @@ function KnowledgeOrganizer({
             const name = tagName.trim();
             if (!name || state.tags.some((tag) => tag.name.toLowerCase() === name.toLowerCase())) return;
             const id = Math.max(0, ...state.tags.map((tag) => tag.id)) + 1;
-            onChange({ ...state, tags: [...state.tags, { id, name, color: null }], tagLinks: [...state.tagLinks, { ...target, tagId: id }] });
+            onChange({ ...state, tags: [...state.tags, { id, name, color: null }], tagLinks: [...state.tagLinks, { ...effectiveTarget, tagId: id }] });
             setTagName('');
           }}><input value={tagName} onChange={(event) => setTagName(event.target.value)} placeholder="New tag" /><button className="toolbar-button" type="submit">Add</button></form>
         </div>
@@ -2111,7 +3214,7 @@ function KnowledgeOrganizer({
             const name = collectionName.trim();
             if (!name || state.collections.some((collection) => collection.name.toLowerCase() === name.toLowerCase())) return;
             const id = Math.max(0, ...state.collections.map((collection) => collection.id)) + 1;
-            onChange({ ...state, collections: [...state.collections, { id, name, createdAt: Date.now() }], collectionItems: [...state.collectionItems, { ...target, collectionId: id, createdAt: Date.now() }] });
+            onChange({ ...state, collections: [...state.collections, { id, name, createdAt: Date.now() }], collectionItems: [...state.collectionItems, { ...effectiveTarget, collectionId: id, createdAt: Date.now() }] });
             setCollectionName('');
           }}><input value={collectionName} onChange={(event) => setCollectionName(event.target.value)} placeholder="New collection" /><button className="toolbar-button" type="submit">Add</button></form>
         </div>
@@ -2123,7 +3226,7 @@ function KnowledgeOrganizer({
             const body = noteBody.trim();
             if (!body) return;
             const now = Date.now();
-            onChange({ ...state, notes: [{ ...target, id: Math.max(0, ...state.notes.map((note) => note.id)) + 1, body, createdAt: now, updatedAt: now }, ...state.notes] });
+            onChange({ ...state, notes: [{ ...effectiveTarget, id: Math.max(0, ...state.notes.map((note) => note.id)) + 1, body, createdAt: now, updatedAt: now }, ...state.notes] });
             setNoteBody('');
           }}><textarea value={noteBody} onChange={(event) => setNoteBody(event.target.value)} placeholder="Attach a note..." /><button className="toolbar-button active" type="submit">Save note</button></form>
         </div>
@@ -2135,6 +3238,9 @@ function KnowledgeOrganizer({
 function KnowledgeView({
   state,
   onOpen,
+  onOpenSource,
+  onOrganize,
+  onExportBundle,
   index,
   artifacts,
   onApplyKnowledgeState,
@@ -2146,6 +3252,9 @@ function KnowledgeView({
 }: {
   state: KnowledgeState;
   onOpen: (target: KnowledgeTarget) => void;
+  onOpenSource?: (target: KnowledgeTarget) => void;
+  onOrganize?: (target: KnowledgeTarget) => void;
+  onExportBundle?: (bundleName: string, targets: KnowledgeTarget[], chooseDirectory?: boolean) => void;
   index: ArchiveIndex;
   artifacts: ArtifactIndex | null;
   onApplyKnowledgeState: (state: KnowledgeState) => void;
@@ -2187,6 +3296,9 @@ function KnowledgeView({
         onSelectTargets={onSelectTargets}
         onClearSelection={onClearSelection}
         onOpenTarget={onOpen}
+        onOpenTargetSource={onOpenSource}
+        onOrganizeTarget={onOrganize}
+        onExportBundle={onExportBundle}
         artifacts={artifacts}
         index={index}
         activeTypography={activeTypography}
@@ -2410,6 +3522,7 @@ export default function App() {
   const [codeArtifacts, setCodeArtifacts] = useState<CodeArtifact[]>([]);
   const [documentArtifacts, setDocumentArtifacts] = useState<DocumentArtifact[]>([]);
   const [assetArtifacts, setAssetArtifacts] = useState<AssetArtifact[]>([]);
+  const [linkArtifacts, setLinkArtifacts] = useState<LinkArtifact[]>([]);
   const [showHidden, setShowHidden] = useState(false);
   const [lightboxAsset, setLightboxAsset] = useState<ArchiveAsset | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -2422,6 +3535,9 @@ export default function App() {
   });
   const [selectedTargets, setSelectedTargets] = useState<KnowledgeTarget[]>([]);
   const [matrixViewMode, setMatrixViewMode] = useState<'docked' | 'expanded' | 'fullscreen' | 'minimized'>('docked');
+  const [returnView, setReturnView] = useState<AppView | null>(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [focusedArtifactId, setFocusedArtifactId] = useState<{ code?: string; document?: string; asset?: string; link?: string }>({});
 
   useEffect(() => {
     document.documentElement.setAttribute('data-typography', activeTypography);
@@ -2494,31 +3610,36 @@ export default function App() {
       setCodeArtifacts([]);
       setDocumentArtifacts([]);
       setAssetArtifacts([]);
+      setLinkArtifacts([]);
       return;
     }
     if (!isTauriRuntime()) {
       setCodeArtifacts(artifacts?.code || []);
       setDocumentArtifacts(artifacts?.documents || []);
       setAssetArtifacts(artifacts?.assets || []);
+      setLinkArtifacts(artifacts?.links || []);
       return;
     }
     if (!libraryStatus?.configured || !artifacts) {
       setCodeArtifacts([]);
       setDocumentArtifacts([]);
       setAssetArtifacts([]);
+      setLinkArtifacts([]);
       return;
     }
-    Promise.all([loadCodeArtifacts(), loadDocumentArtifacts(), loadAssetArtifacts()])
-      .then(([code, documents, assets]) => {
+    Promise.all([loadCodeArtifacts(), loadDocumentArtifacts(), loadAssetArtifacts(), loadLinkArtifacts()])
+      .then(([code, documents, assets, links]) => {
         setCodeArtifacts(code);
         setDocumentArtifacts(documents);
         setAssetArtifacts(assets);
+        setLinkArtifacts(links);
       })
       .catch((err) => {
         console.error('Could not load artifact explorers', err);
         setCodeArtifacts(artifacts?.code || []);
         setDocumentArtifacts(artifacts?.documents || []);
         setAssetArtifacts(artifacts?.assets || []);
+        setLinkArtifacts(artifacts?.links || []);
       });
   }, [artifacts, libraryStatus?.configured]);
 
@@ -2777,16 +3898,119 @@ export default function App() {
     const next = getConversationById(index, bookmark.conversationId);
     if (!next) return;
     pendingMessageId.current = bookmark.messageId;
+    setHighlightedMessageId(bookmark.messageId);
     openConversation(next);
   }
 
-  function openArtifactSource(artifact: CodeArtifact | DocumentArtifact | AssetArtifact) {
+  function openArtifactSource(artifact: CodeArtifact | DocumentArtifact | AssetArtifact | LinkArtifact, originView?: AppView) {
     if (!index) return;
     const next = getConversationById(index, artifact.conversationId);
     if (!next) return;
+    const sourceView = originView ?? activeView;
+    if (sourceView !== 'conversation') {
+      setReturnView(sourceView);
+    }
     pendingMessageId.current = artifact.messageId;
+    setHighlightedMessageId(artifact.messageId);
     openConversation(next);
   }
+
+  function openTargetFromMatrix(target: KnowledgeTarget) {
+    if (!index) return;
+    if (target.targetType === 'conversation') {
+      const conv = index.conversations.find((c) => c.id === target.targetId || c.id === target.conversationId);
+      if (conv) {
+        setReturnView(activeView !== 'conversation' ? activeView : null);
+        setHighlightedMessageId(null);
+        openConversation(conv);
+      }
+      return;
+    }
+    if (target.targetType === 'code') {
+      setFocusedArtifactId((prev) => ({ ...prev, code: target.targetId }));
+      setSelected(null);
+      setActiveView('code');
+    } else if (target.targetType === 'document') {
+      setFocusedArtifactId((prev) => ({ ...prev, document: target.targetId }));
+      setSelected(null);
+      setActiveView('documents');
+    } else if (target.targetType === 'asset') {
+      setFocusedArtifactId((prev) => ({ ...prev, asset: target.targetId }));
+      setSelected(null);
+      setActiveView('assets');
+    } else if (target.targetType === 'link') {
+      setFocusedArtifactId((prev) => ({ ...prev, link: target.targetId }));
+      setSelected(null);
+      setActiveView('links');
+    } else {
+      setOrganizerTarget(target);
+    }
+  }
+
+  function openTargetSourceFromMatrix(target: KnowledgeTarget) {
+    if (!index) return;
+    const origin = activeView !== 'conversation' ? activeView : returnView || 'knowledge';
+    if (target.targetType === 'code') {
+      const found = codeArtifacts.find((item) => item.id === target.targetId) || artifacts?.code.find((item) => item.id === target.targetId);
+      if (found) {
+        openArtifactSource(found, origin);
+        return;
+      }
+    } else if (target.targetType === 'document') {
+      const found = documentArtifacts.find((item) => item.id === target.targetId) || artifacts?.documents.find((item) => item.id === target.targetId);
+      if (found) {
+        openArtifactSource(found, origin);
+        return;
+      }
+    } else if (target.targetType === 'asset') {
+      const found = assetArtifacts.find((item) => item.id === target.targetId) || artifacts?.assets.find((item) => item.id === target.targetId);
+      if (found) {
+        openArtifactSource(found, origin);
+        return;
+      }
+    } else if (target.targetType === 'link') {
+      const found = linkArtifacts.find((item) => item.id === target.targetId) || artifacts?.links.find((item) => item.id === target.targetId);
+      if (found) {
+        openArtifactSource(found, origin);
+        return;
+      }
+    }
+    const conv = getConversationById(index, target.conversationId || target.targetId);
+    if (conv) {
+      setReturnView(origin);
+      setHighlightedMessageId(null);
+      openConversation(conv);
+    }
+  }
+
+  async function handleExportBundle(bundleName: string, targets: KnowledgeTarget[], chooseDirectory = true) {
+    if (!targets.length) return;
+    try {
+      const summary = await exportRecoveryBundle(bundleName, targets, chooseDirectory);
+      if (summary) {
+        setLibraryMessage(
+          `Exported recovery bundle "${summary.bundleName}" (${summary.exportedCount} items exported${summary.skippedCount ? `, ${summary.skippedCount} skipped` : ''}) to ${summary.bundlePath}`,
+        );
+      }
+    } catch (err) {
+      setLibraryMessage(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  const returnViewLabel =
+    returnView === 'code'
+      ? 'Back to Code Explorer'
+      : returnView === 'documents'
+        ? 'Back to Documents'
+        : returnView === 'assets'
+          ? 'Back to Assets'
+          : returnView === 'links'
+            ? 'Back to Link Explorer'
+            : returnView === 'knowledge'
+              ? 'Back to Knowledge'
+              : returnView === 'projects'
+                ? 'Back to Projects'
+                : 'Dashboard';
 
   function handleReaderScroll() {
     if (!selected || !mainRef.current) return;
@@ -2810,7 +4034,7 @@ export default function App() {
         <Archive size={34} />
         <h1>Archive data is not ready</h1>
         <p>{error}</p>
-        <code>npm run ingest</code>
+        <code>pnpm ingest</code>
       </main>
     );
   }
@@ -2849,7 +4073,7 @@ export default function App() {
   }
 
   return (
-    <div className={activeView === 'code' || activeView === 'documents' || activeView === 'assets' || activeView === 'knowledge' || activeView === 'projects' || activeView === 'library' ? 'app-shell explorer-open' : 'app-shell'}>
+    <div className={activeView === 'code' || activeView === 'documents' || activeView === 'assets' || activeView === 'links' || activeView === 'knowledge' || activeView === 'projects' || activeView === 'library' ? 'app-shell explorer-open' : 'app-shell'}>
       <Sidebar
         index={index}
         conversations={filtered.conversations}
@@ -2858,7 +4082,51 @@ export default function App() {
         filters={filters}
         regexError={filtered.regexError}
         viewerState={viewerState}
+        savedSearches={knowledgeState.savedSearches}
+        artifactSearchData={artifactSearchData}
         onFilters={setFilters}
+        onSaveSearch={(currentFilters) => {
+          const parts: string[] = [];
+          if (currentFilters.query.trim()) parts.push(`"${currentFilters.query.trim()}"`);
+          if (currentFilters.fieldScope !== 'all') parts.push(`Scope: ${currentFilters.fieldScope}`);
+          if (currentFilters.regex) parts.push('Regex');
+          if (currentFilters.startDate || currentFilters.endDate) {
+            parts.push(`${currentFilters.startDate || '…'} → ${currentFilters.endDate || '…'}`);
+          }
+          if (currentFilters.minMessages || currentFilters.maxMessages) {
+            parts.push(`Msgs: ${currentFilters.minMessages || '0'}-${currentFilters.maxMessages || '∞'}`);
+          }
+          const name = parts.join(' · ') || `Saved filter ${(knowledgeState.savedSearches?.length || 0) + 1}`;
+          const nextSaved: SavedSearch[] = [
+            ...(knowledgeState.savedSearches || []).filter((item) => item.name !== name),
+            {
+              id: `saved-${Date.now()}`,
+              name,
+              ...currentFilters,
+              createdAt: Date.now(),
+            },
+          ];
+          applyKnowledgeState({
+            ...knowledgeState,
+            savedSearches: nextSaved,
+          });
+        }}
+        onDeleteSavedSearch={(id) => {
+          applyKnowledgeState({
+            ...knowledgeState,
+            savedSearches: (knowledgeState.savedSearches || []).filter((item) => item.id !== id),
+          });
+        }}
+        onQueueConversations={(convs) => {
+          handleBatchSelectVisible(
+            convs.map((c) => ({
+              targetType: 'conversation',
+              targetId: c.id,
+              conversationId: c.id,
+              title: resolveTargetTitle(knowledgeState.customTitles, 'conversation', c.id, c.title),
+            })),
+          );
+        }}
         onSelect={openConversation}
         collapsed={collapsed}
         onToggleCollapsed={() => setCollapsed((value) => !value)}
@@ -2877,6 +4145,10 @@ export default function App() {
         onAssetExplorer={() => {
           setSelected(null);
           setActiveView('assets');
+        }}
+        onLinkExplorer={() => {
+          setSelected(null);
+          setActiveView('links');
         }}
         onKnowledge={() => {
           setSelected(null);
@@ -2899,8 +4171,16 @@ export default function App() {
           favorite={Boolean(selected && viewerState.favorites[selected.id])}
           pinned={Boolean(selected && viewerState.pinned[selected.id])}
           read={Boolean(selected && viewerState.read[selected.id])}
+          backLabel={returnViewLabel}
           onShowHidden={setShowHidden}
-          onBack={() => setSelected(null)}
+          onBack={() => {
+            setSelected(null);
+            setHighlightedMessageId(null);
+            if (returnView) {
+              setActiveView(returnView);
+              setReturnView(null);
+            }
+          }}
           onFavorite={() => mutateConversationRecord('favorites')}
           onPin={() => mutateConversationRecord('pinned')}
           onRead={toggleRead}
@@ -2916,6 +4196,7 @@ export default function App() {
             <ListFilter size={13} />
             {filtered.conversations.length.toLocaleString()} filtered
           </span>
+          {libraryMessage ? <span style={{ color: 'var(--accent)', fontWeight: 550 }}>{libraryMessage}</span> : null}
         </div>
         {activeView === 'conversation' && selected ? (
           conversation ? (
@@ -2925,6 +4206,7 @@ export default function App() {
                   message={message}
                   key={message.id}
                   bookmarked={bookmarkedMessageIds.has(message.id)}
+                  highlighted={highlightedMessageId === message.id}
                   onBookmark={toggleMessageBookmark}
                   onCopyAnchor={copyMessageAnchor}
                   onOpenAsset={setLightboxAsset}
@@ -2938,38 +4220,83 @@ export default function App() {
         ) : activeView === 'code' ? (
           <CodeExplorer
             artifacts={codeArtifacts}
-            onOpenSource={openArtifactSource}
+            customTitles={knowledgeState.customTitles}
+            onOpenSource={(artifact) => openArtifactSource(artifact, 'code')}
             onOrganize={setOrganizerTarget}
             selectedTargets={selectedTargets}
             onToggleSelectTarget={toggleTargetSelection}
             onSelectAllVisible={handleBatchSelectVisible}
             onClearSelection={() => setSelectedTargets([])}
+            initialSelectedId={focusedArtifactId.code}
           />
         ) : activeView === 'documents' ? (
           <DocumentExplorer
             artifacts={documentArtifacts}
-            onOpenSource={openArtifactSource}
+            customTitles={knowledgeState.customTitles}
+            onOpenSource={(artifact) => openArtifactSource(artifact, 'documents')}
             onOrganize={setOrganizerTarget}
             selectedTargets={selectedTargets}
             onToggleSelectTarget={toggleTargetSelection}
             onSelectAllVisible={handleBatchSelectVisible}
             onClearSelection={() => setSelectedTargets([])}
+            initialSelectedId={focusedArtifactId.document}
           />
         ) : activeView === 'assets' ? (
           <AssetExplorer
             artifacts={assetArtifacts}
-            onOpenSource={openArtifactSource}
+            customTitles={knowledgeState.customTitles}
+            assetTriage={knowledgeState.assetTriage}
+            onUpdateAssetTriage={(assetId, status) => {
+              applyKnowledgeState({
+                ...knowledgeState,
+                assetTriage: {
+                  ...(knowledgeState.assetTriage || {}),
+                  [assetId]: status,
+                },
+              });
+            }}
+            onBulkTriageMissingDalle={() => {
+              const nextTriage: Record<string, AssetTriageStatus> = {
+                ...(knowledgeState.assetTriage || {}),
+              };
+              assetArtifacts.forEach((asset) => {
+                if (asset.kind === 'missing' && classifyUnresolvedAssetCause(asset) === 'dalle_webp') {
+                  nextTriage[asset.id] = 'unrecoverable';
+                }
+              });
+              applyKnowledgeState({
+                ...knowledgeState,
+                assetTriage: nextTriage,
+              });
+            }}
+            onOpenSource={(artifact) => openArtifactSource(artifact, 'assets')}
             onOpenAsset={setLightboxAsset}
             onOrganize={setOrganizerTarget}
             selectedTargets={selectedTargets}
             onToggleSelectTarget={toggleTargetSelection}
             onSelectAllVisible={handleBatchSelectVisible}
             onClearSelection={() => setSelectedTargets([])}
+            initialSelectedId={focusedArtifactId.asset}
+          />
+        ) : activeView === 'links' ? (
+          <LinkExplorer
+            artifacts={linkArtifacts}
+            customTitles={knowledgeState.customTitles}
+            onOpenSource={(artifact) => openArtifactSource(artifact, 'links')}
+            onOrganize={setOrganizerTarget}
+            selectedTargets={selectedTargets}
+            onToggleSelectTarget={toggleTargetSelection}
+            onSelectAllVisible={handleBatchSelectVisible}
+            onClearSelection={() => setSelectedTargets([])}
+            initialSelectedId={focusedArtifactId.link}
           />
         ) : activeView === 'knowledge' ? (
           <KnowledgeView
             state={knowledgeState}
-            onOpen={setOrganizerTarget}
+            onOpen={openTargetFromMatrix}
+            onOpenSource={openTargetSourceFromMatrix}
+            onOrganize={setOrganizerTarget}
+            onExportBundle={(bundleName, targets, chooseDirectory) => void handleExportBundle(bundleName, targets, chooseDirectory)}
             index={index}
             artifacts={artifacts}
             onApplyKnowledgeState={applyKnowledgeState}
@@ -2982,7 +4309,11 @@ export default function App() {
         ) : activeView === 'projects' ? (
           <ProjectIntelligenceView state={projectState} index={index} busy={projectBusy} onScan={() => void scanProjectCandidates()} onConfirm={(candidateId) => void mutateProject(() => confirmProjectCandidate(candidateId))} onDismiss={(candidateId) => void mutateProject(() => dismissProjectCandidate(candidateId))} onAdd={(projectId, conversationId) => void mutateProject(() => addProjectConversation(projectId, conversationId))} onRemove={(projectId, conversationId) => void mutateProject(() => removeProjectConversation(projectId, conversationId))} onOpenConversation={(conversationId) => {
             const target = index.conversations.find((item) => item.id === conversationId);
-            if (target) openConversation(target);
+            if (target) {
+              setReturnView('projects');
+              setHighlightedMessageId(null);
+              openConversation(target);
+            }
           }} />
         ) : activeView === 'library' ? (
           <LibraryView
@@ -2993,7 +4324,11 @@ export default function App() {
             onRestore={() => void restoreImport()}
           />
         ) : (
-          <Dashboard index={index} artifacts={artifacts} viewerState={viewerState} onSelect={openConversation} />
+          <Dashboard index={index} artifacts={artifacts} viewerState={viewerState} onSelect={(conv) => {
+            setReturnView(null);
+            setHighlightedMessageId(null);
+            openConversation(conv);
+          }} />
         )}
         {/* Sweeping Bottom Section: Dual-List Relation Matrix Command Center */}
         {activeView !== 'knowledge' ? (
@@ -3003,18 +4338,10 @@ export default function App() {
             selectedTargets={selectedTargets}
             onSelectTargets={setSelectedTargets}
             onClearSelection={() => setSelectedTargets([])}
-            onOpenTarget={(target) => {
-              if (target.targetType === 'conversation') {
-                const conv = index.conversations.find((c) => c.id === target.targetId || c.id === target.conversationId);
-                if (conv) openConversation(conv);
-              } else if (target.targetType === 'code') {
-                setActiveView('code');
-              } else if (target.targetType === 'document') {
-                setActiveView('documents');
-              } else if (target.targetType === 'asset') {
-                setActiveView('assets');
-              }
-            }}
+            onOpenTarget={openTargetFromMatrix}
+            onOpenTargetSource={openTargetSourceFromMatrix}
+            onOrganizeTarget={setOrganizerTarget}
+            onExportBundle={(bundleName, targets, chooseDirectory) => void handleExportBundle(bundleName, targets, chooseDirectory)}
             artifacts={artifacts}
             index={index}
             activeTypography={activeTypography}
@@ -3026,7 +4353,22 @@ export default function App() {
       </main>
       <RightRail index={index} messages={displayedMessages} bookmarks={allBookmarks} onSelectBookmark={selectBookmark} />
       <Lightbox asset={lightboxAsset} onClose={() => setLightboxAsset(null)} />
-      {organizerTarget ? <KnowledgeOrganizer target={organizerTarget} state={knowledgeState} onChange={applyKnowledgeState} onClose={() => setOrganizerTarget(null)} /> : null}
+      {organizerTarget ? (
+        <KnowledgeOrganizer
+          target={organizerTarget}
+          state={knowledgeState}
+          onChange={applyKnowledgeState}
+          onRenameTarget={(nextTitle) => {
+            setOrganizerTarget((prev) => (prev ? { ...prev, title: nextTitle } : null));
+            setSelectedTargets((prev) =>
+              prev.map((item) =>
+                targetKey(item) === targetKey(organizerTarget) ? { ...item, title: nextTitle } : item,
+              ),
+            );
+          }}
+          onClose={() => setOrganizerTarget(null)}
+        />
+      ) : null}
     </div>
   );
 }

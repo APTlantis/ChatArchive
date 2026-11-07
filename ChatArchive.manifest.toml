@@ -73,10 +73,11 @@ depends_on_projects = [
 ]
 
 [visual_system]
-theme = "Blue Slate"
-theme_path = "D:\\.city_hall\\blue.slate"
+theme = "Crystal"
+theme_path = "D:\\.city_hall\\Crystal"
+previous_theme = "Blue Slate"
 adoption_status = "explicit visual-system dependency"
-adoption_scope = "Color tokens, typography stack, focus treatment, code surfaces, and status accents only; existing ChatArchive layout and product behavior remain authoritative."
+adoption_scope = "Crystal semantic dark tokens, typography presets (IBM Plex / Inter / Source Sans 3), focus treatment, code surfaces, and status accents; existing ChatArchive layout and product behavior remain authoritative."
 release_claim = false
 
 [state]

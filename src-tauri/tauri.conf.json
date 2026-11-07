@@ -4,9 +4,9 @@
   "version": "0.2.0",
   "identifier": "local.chatarchive.desktop",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "pnpm dev",
     "devUrl": "http://127.0.0.1:5173",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -29,7 +29,7 @@
   },
   "bundle": {
     "active": false,
-    "targets": [],
+    "targets": ["msi", "nsis"],
     "icon": ["icons/icon.ico", "icons/icon.png"]
   },
   "plugins": {

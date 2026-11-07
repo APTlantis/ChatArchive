@@ -285,6 +285,25 @@ pub struct KnowledgeFavorite {
     pub created_at: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSearch {
+    pub id: String,
+    pub name: String,
+    pub query: String,
+    pub field_scope: String,
+    pub regex: bool,
+    #[serde(default)]
+    pub start_date: String,
+    #[serde(default)]
+    pub end_date: String,
+    #[serde(default)]
+    pub min_messages: String,
+    #[serde(default)]
+    pub max_messages: String,
+    pub created_at: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct KnowledgeState {
@@ -294,6 +313,12 @@ pub struct KnowledgeState {
     pub collection_items: Vec<KnowledgeCollectionItem>,
     pub notes: Vec<KnowledgeNote>,
     pub favorites: Vec<KnowledgeFavorite>,
+    #[serde(default)]
+    pub custom_titles: BTreeMap<String, String>,
+    #[serde(default)]
+    pub saved_searches: Vec<SavedSearch>,
+    #[serde(default)]
+    pub asset_triage: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -432,4 +457,29 @@ pub struct SearchFilters {
     pub end_date: String,
     pub min_messages: String,
     pub max_messages: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryBundleItem {
+    pub target_type: String,
+    pub target_id: String,
+    pub title: String,
+    pub conversation_id: String,
+    pub message_id: Option<String>,
+    pub exported_relative_path: Option<String>,
+    pub status: String,
+    pub original_pointer: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryBundleSummary {
+    pub bundle_name: String,
+    pub bundle_path: String,
+    pub manifest_path: String,
+    pub readme_path: String,
+    pub exported_count: usize,
+    pub skipped_count: usize,
+    pub items: Vec<RecoveryBundleItem>,
 }

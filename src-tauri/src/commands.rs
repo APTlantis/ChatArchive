@@ -570,6 +570,12 @@ pub fn list_asset_artifacts(app: AppHandle) -> Result<Vec<AssetArtifact>, String
 }
 
 #[tauri::command]
+pub fn list_link_artifacts(app: AppHandle) -> Result<Vec<LinkArtifact>, String> {
+    let (_, conn) = open_library_db(&app)?;
+    db::list_link_artifacts(&conn)
+}
+
+#[tauri::command]
 pub fn export_document_markdown(
     app: AppHandle,
     artifact_id: String,
@@ -856,6 +862,394 @@ pub fn export_conversation_markdown(
     Ok(file.to_string_lossy().to_string())
 }
 
+fn code_language_extension(language: &str) -> &'static str {
+    match language.trim().to_ascii_lowercase().as_str() {
+        "rust" | "rs" => "rs",
+        "python" | "py" => "py",
+        "typescript" | "ts" => "ts",
+        "tsx" => "tsx",
+        "javascript" | "js" => "js",
+        "jsx" => "jsx",
+        "bash" | "sh" | "zsh" | "shell" => "sh",
+        "powershell" | "ps1" | "pwsh" => "ps1",
+        "cmd" | "bat" | "batch" => "bat",
+        "json" => "json",
+        "jsonl" => "jsonl",
+        "toml" => "toml",
+        "yaml" | "yml" => "yaml",
+        "html" | "htm" => "html",
+        "css" => "css",
+        "sql" => "sql",
+        "go" | "golang" => "go",
+        "c" => "c",
+        "cpp" | "c++" | "cxx" => "cpp",
+        "csharp" | "c#" | "cs" => "cs",
+        "java" => "java",
+        "markdown" | "md" => "md",
+        "mermaid" | "mmd" => "mmd",
+        "xml" | "svg" => "xml",
+        "racket" | "rkt" => "rkt",
+        "r" => "R",
+        _ => "txt",
+    }
+}
+
+pub(crate) fn build_recovery_bundle(
+    library: &Path,
+    conn: &rusqlite::Connection,
+    bundle_name: &str,
+    targets: &[KnowledgeTarget],
+    destination_root: &Path,
+) -> AppResult<RecoveryBundleSummary> {
+    if targets.is_empty() {
+        return Err("Select at least one item or collection to export.".to_string());
+    }
+    let safe_slug = slugify_path_name(bundle_name);
+    let timestamp = Utc::now().format("%Y%m%d-%H%M%S").to_string();
+    let bundle_dir = destination_root.join(format!("recovered-{safe_slug}-{timestamp}"));
+    fs::create_dir_all(&bundle_dir)
+        .map_err(|err| format!("Could not create recovery bundle folder: {err}"))?;
+
+    let code_artifacts = db::list_code_artifacts(conn)?;
+    let doc_artifacts = db::list_document_artifacts(conn)?;
+    let asset_artifacts = db::list_asset_artifacts(conn)?;
+    let link_artifacts = db::list_link_artifacts(conn)?;
+
+    let mut items = Vec::new();
+    let mut exported_count = 0usize;
+    let mut skipped_count = 0usize;
+
+    for (idx, target) in targets.iter().enumerate() {
+        let index_prefix = format!("{:03}", idx + 1);
+        match target.target_type.as_str() {
+            "code" => {
+                if let Some(code) = code_artifacts.iter().find(|item| item.base.id == target.target_id) {
+                    let code_dir = bundle_dir.join("code");
+                    fs::create_dir_all(&code_dir).map_err(|err| err.to_string())?;
+                    let ext = code_language_extension(&code.language);
+                    let title_slug = slugify_path_name(&code.base.conversation_title);
+                    let rel_name = format!(
+                        "code/{index_prefix}-{title_slug}-{}.{ext}",
+                        code.base.id.chars().take(8).collect::<String>()
+                    );
+                    fs::write(bundle_dir.join(&rel_name), &code.text)
+                        .map_err(|err| format!("Could not write code file: {err}"))?;
+                    exported_count += 1;
+                    items.push(RecoveryBundleItem {
+                        target_type: "code".to_string(),
+                        target_id: code.base.id.clone(),
+                        title: format!("{} ({})", code.base.conversation_title, code.language),
+                        conversation_id: code.base.conversation_id.clone(),
+                        message_id: Some(code.base.message_id.clone()),
+                        exported_relative_path: Some(rel_name),
+                        status: "exported".to_string(),
+                        original_pointer: None,
+                    });
+                } else {
+                    skipped_count += 1;
+                    items.push(RecoveryBundleItem {
+                        target_type: "code".to_string(),
+                        target_id: target.target_id.clone(),
+                        title: target.title.clone(),
+                        conversation_id: target.conversation_id.clone(),
+                        message_id: None,
+                        exported_relative_path: None,
+                        status: "missing_from_index".to_string(),
+                        original_pointer: None,
+                    });
+                }
+            }
+            "document" => {
+                if let Some(doc) = doc_artifacts.iter().find(|item| item.base.id == target.target_id) {
+                    let doc_dir = bundle_dir.join("documents");
+                    fs::create_dir_all(&doc_dir).map_err(|err| err.to_string())?;
+                    let source_file = doc
+                        .url
+                        .as_deref()
+                        .and_then(|u| u.strip_prefix("local-file://"))
+                        .map(PathBuf::from)
+                        .filter(|p| p.is_file());
+                    let rel_name = if let Some(src) = source_file {
+                        let ext = src
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .filter(|e| !e.is_empty() && !e.eq_ignore_ascii_case("dat"))
+                            .or_else(|| crate::importer::detect_file_signature(&src))
+                            .unwrap_or("md");
+                        let title_slug = slugify_path_name(&doc.title);
+                        let rel = format!("documents/{index_prefix}-{title_slug}.{ext}");
+                        fs::copy(&src, bundle_dir.join(&rel))
+                            .map_err(|err| format!("Could not copy document file: {err}"))?;
+                        rel
+                    } else {
+                        let content = db::document_artifact_content(conn, &doc.base.id)
+                            .unwrap_or_else(|_| doc.preview.clone());
+                        let title_slug = slugify_path_name(&doc.title);
+                        let rel = format!("documents/{index_prefix}-{title_slug}.md");
+                        fs::write(bundle_dir.join(&rel), content)
+                            .map_err(|err| format!("Could not write document markdown: {err}"))?;
+                        rel
+                    };
+                    exported_count += 1;
+                    items.push(RecoveryBundleItem {
+                        target_type: "document".to_string(),
+                        target_id: doc.base.id.clone(),
+                        title: doc.title.clone(),
+                        conversation_id: doc.base.conversation_id.clone(),
+                        message_id: Some(doc.base.message_id.clone()),
+                        exported_relative_path: Some(rel_name),
+                        status: "exported".to_string(),
+                        original_pointer: doc.original.clone(),
+                    });
+                } else {
+                    skipped_count += 1;
+                    items.push(RecoveryBundleItem {
+                        target_type: "document".to_string(),
+                        target_id: target.target_id.clone(),
+                        title: target.title.clone(),
+                        conversation_id: target.conversation_id.clone(),
+                        message_id: None,
+                        exported_relative_path: None,
+                        status: "missing_from_index".to_string(),
+                        original_pointer: None,
+                    });
+                }
+            }
+            "asset" => {
+                if let Some(asset) = asset_artifacts.iter().find(|item| item.base.id == target.target_id) {
+                    let source_file = asset
+                        .url
+                        .strip_prefix("local-file://")
+                        .map(PathBuf::from)
+                        .filter(|p| p.is_file());
+                    if let Some(src) = source_file {
+                        let assets_dir = bundle_dir.join("assets");
+                        fs::create_dir_all(&assets_dir).map_err(|err| err.to_string())?;
+                        let ext = src
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .filter(|e| !e.is_empty() && !e.eq_ignore_ascii_case("dat"))
+                            .or_else(|| crate::importer::detect_file_signature(&src))
+                            .unwrap_or("bin");
+                        let label_slug = slugify_path_name(&asset.label);
+                        let rel_name = format!(
+                            "assets/{index_prefix}-{label_slug}-{}.{ext}",
+                            asset.base.id.chars().take(8).collect::<String>()
+                        );
+                        fs::copy(&src, bundle_dir.join(&rel_name))
+                            .map_err(|err| format!("Could not copy asset file: {err}"))?;
+                        exported_count += 1;
+                        items.push(RecoveryBundleItem {
+                            target_type: "asset".to_string(),
+                            target_id: asset.base.id.clone(),
+                            title: asset.label.clone(),
+                            conversation_id: asset.base.conversation_id.clone(),
+                            message_id: Some(asset.base.message_id.clone()),
+                            exported_relative_path: Some(rel_name),
+                            status: "exported".to_string(),
+                            original_pointer: Some(asset.original.clone()),
+                        });
+                    } else {
+                        skipped_count += 1;
+                        items.push(RecoveryBundleItem {
+                            target_type: "asset".to_string(),
+                            target_id: asset.base.id.clone(),
+                            title: asset.label.clone(),
+                            conversation_id: asset.base.conversation_id.clone(),
+                            message_id: Some(asset.base.message_id.clone()),
+                            exported_relative_path: None,
+                            status: format!("unrecoverable_{}", asset.kind),
+                            original_pointer: Some(asset.original.clone()),
+                        });
+                    }
+                } else {
+                    skipped_count += 1;
+                    items.push(RecoveryBundleItem {
+                        target_type: "asset".to_string(),
+                        target_id: target.target_id.clone(),
+                        title: target.title.clone(),
+                        conversation_id: target.conversation_id.clone(),
+                        message_id: None,
+                        exported_relative_path: None,
+                        status: "missing_from_index".to_string(),
+                        original_pointer: None,
+                    });
+                }
+            }
+            "conversation" => {
+                if let Some(conv) = db::load_conversation(library, conn, &target.target_id)? {
+                    let conv_dir = bundle_dir.join("conversations");
+                    fs::create_dir_all(&conv_dir).map_err(|err| err.to_string())?;
+                    let rel_name = format!("conversations/{index_prefix}-{}.md", conv.summary.slug);
+                    let mut md = format!(
+                        "# {}\n\n- **Conversation ID:** `{}`\n- **Created:** {}\n- **Updated:** {}\n- **Visible Messages:** {}\n\n---\n\n",
+                        conv.summary.title,
+                        conv.summary.id,
+                        conv.summary.create_iso.as_deref().unwrap_or("Unknown"),
+                        conv.summary.update_iso.as_deref().unwrap_or("Unknown"),
+                        conv.summary.message_count
+                    );
+                    for msg in conv.messages.iter().filter(|m| !m.hidden) {
+                        md.push_str(&format!("## {} (`{}`)\n\n{}\n\n", msg.role.to_uppercase(), msg.id, msg.text));
+                    }
+                    fs::write(bundle_dir.join(&rel_name), md)
+                        .map_err(|err| format!("Could not write conversation markdown: {err}"))?;
+                    exported_count += 1;
+                    items.push(RecoveryBundleItem {
+                        target_type: "conversation".to_string(),
+                        target_id: conv.summary.id.clone(),
+                        title: conv.summary.title.clone(),
+                        conversation_id: conv.summary.id.clone(),
+                        message_id: None,
+                        exported_relative_path: Some(rel_name),
+                        status: "exported".to_string(),
+                        original_pointer: None,
+                    });
+                } else {
+                    skipped_count += 1;
+                    items.push(RecoveryBundleItem {
+                        target_type: "conversation".to_string(),
+                        target_id: target.target_id.clone(),
+                        title: target.title.clone(),
+                        conversation_id: target.conversation_id.clone(),
+                        message_id: None,
+                        exported_relative_path: None,
+                        status: "missing_from_index".to_string(),
+                        original_pointer: None,
+                    });
+                }
+            }
+            "link" => {
+                if let Some(link) = link_artifacts.iter().find(|item| item.base.id == target.target_id) {
+                    let links_dir = bundle_dir.join("links");
+                    fs::create_dir_all(&links_dir).map_err(|err| err.to_string())?;
+                    let clean_url = crate::importer::clean_extracted_url(&link.url);
+                    let clean_domain = crate::importer::domain_from_url(&clean_url);
+                    let domain_slug = slugify_path_name(if clean_domain.is_empty() { "link" } else { &clean_domain });
+                    let rel_name = format!(
+                        "links/{index_prefix}-{domain_slug}-{}.md",
+                        link.base.id.chars().take(8).collect::<String>()
+                    );
+                    let md = format!(
+                        "# {}\n\n- **URL:** {}\n- **Domain:** `{}`\n- **Conversation:** {} (`{}`)\n- **Message ID:** `{}`\n",
+                        link.label,
+                        clean_url,
+                        if clean_domain.is_empty() { "unknown" } else { &clean_domain },
+                        link.base.conversation_title,
+                        link.base.conversation_id,
+                        link.base.message_id
+                    );
+                    fs::write(bundle_dir.join(&rel_name), md)
+                        .map_err(|err| format!("Could not write link markdown: {err}"))?;
+                    exported_count += 1;
+                    items.push(RecoveryBundleItem {
+                        target_type: "link".to_string(),
+                        target_id: link.base.id.clone(),
+                        title: link.label.clone(),
+                        conversation_id: link.base.conversation_id.clone(),
+                        message_id: Some(link.base.message_id.clone()),
+                        exported_relative_path: Some(rel_name),
+                        status: "exported".to_string(),
+                        original_pointer: Some(clean_url),
+                    });
+                } else {
+                    skipped_count += 1;
+                    items.push(RecoveryBundleItem {
+                        target_type: "link".to_string(),
+                        target_id: target.target_id.clone(),
+                        title: target.title.clone(),
+                        conversation_id: target.conversation_id.clone(),
+                        message_id: None,
+                        exported_relative_path: None,
+                        status: "missing_from_index".to_string(),
+                        original_pointer: None,
+                    });
+                }
+            }
+            other => {
+                skipped_count += 1;
+                items.push(RecoveryBundleItem {
+                    target_type: other.to_string(),
+                    target_id: target.target_id.clone(),
+                    title: target.title.clone(),
+                    conversation_id: target.conversation_id.clone(),
+                    message_id: None,
+                    exported_relative_path: None,
+                    status: "unsupported_type".to_string(),
+                    original_pointer: None,
+                });
+            }
+        }
+    }
+
+    let exported_at = Utc::now().to_rfc3339();
+    let manifest_path = bundle_dir.join("manifest.json");
+    let manifest_json = serde_json::json!({
+        "schema": "chatarchive.recovery-bundle",
+        "version": 1,
+        "bundleName": bundle_name,
+        "exportedAt": exported_at,
+        "totalRequested": targets.len(),
+        "exportedCount": exported_count,
+        "skippedCount": skipped_count,
+        "items": items,
+    });
+    fs::write(
+        &manifest_path,
+        serde_json::to_string_pretty(&manifest_json).map_err(|err| err.to_string())?,
+    )
+    .map_err(|err| format!("Could not write bundle manifest: {err}"))?;
+
+    let readme_path = bundle_dir.join("README.md");
+    let mut readme = format!(
+        "# Recovered Bundle: {}\n\n- **Exported At:** {}\n- **Materialized Files:** {}\n- **Skipped / Unresolved:** {}\n- **Manifest:** `manifest.json`\n\n## Recovered Contents\n\n| # | Type | Title | File | Source Conversation | Status |\n|---|---|---|---|---|---|\n",
+        bundle_name, exported_at, exported_count, skipped_count
+    );
+    for (i, item) in items.iter().enumerate() {
+        let rel = item.exported_relative_path.as_deref().unwrap_or("—");
+        readme.push_str(&format!(
+            "| {} | `{}` | {} | `{}` | `{}` | `{}` |\n",
+            i + 1,
+            item.target_type,
+            item.title.replace('|', "\\|"),
+            rel,
+            item.conversation_id,
+            item.status
+        ));
+    }
+    fs::write(&readme_path, readme)
+        .map_err(|err| format!("Could not write bundle README: {err}"))?;
+
+    Ok(RecoveryBundleSummary {
+        bundle_name: bundle_name.to_string(),
+        bundle_path: bundle_dir.to_string_lossy().to_string(),
+        manifest_path: manifest_path.to_string_lossy().to_string(),
+        readme_path: readme_path.to_string_lossy().to_string(),
+        exported_count,
+        skipped_count,
+        items,
+    })
+}
+
+#[tauri::command]
+pub fn export_recovery_bundle(
+    app: AppHandle,
+    bundle_name: String,
+    targets: Vec<KnowledgeTarget>,
+    destination_dir: Option<String>,
+) -> Result<RecoveryBundleSummary, String> {
+    let (library, conn) = open_library_db(&app)?;
+    let dest_root = if let Some(dir) = destination_dir.filter(|d| !d.trim().is_empty()) {
+        PathBuf::from(dir)
+    } else {
+        let archive_path = db::active_archive_path(&conn)?.ok_or("No active archive folder found")?;
+        archive_path.join("exports").join("bundles")
+    };
+    fs::create_dir_all(&dest_root)
+        .map_err(|err| format!("Could not create bundle export destination: {err}"))?;
+    build_recovery_bundle(&library, &conn, &bundle_name, &targets, &dest_root)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -891,6 +1285,76 @@ mod tests {
         let metadata: serde_json::Value = serde_json::from_slice(&fs::read(rollback_dir(&library).join(ROLLBACK_METADATA)).unwrap()).unwrap();
         assert_eq!(metadata["schema"], "chatarchive.rollback");
         assert_eq!(metadata["archiveId"], "second");
+        let _ = fs::remove_dir_all(library);
+    }
+
+    #[test]
+    fn recovery_bundle_exports_mixed_artifacts_with_manifest_and_readme() {
+        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("tests")
+            .join("fixtures")
+            .join("openai-export");
+        let library = temporary_library("bundle-export");
+        db::ensure_library_layout(&library).unwrap();
+        let build = OpenAiImporter.import(&source, &library).unwrap();
+        let mut conn = db::open_db(&library).unwrap();
+        db::migrate(&conn).unwrap();
+        db::replace_archive(
+            &mut conn,
+            &build.archive_id,
+            &source,
+            &build.archive_path,
+            &build.manifest_path,
+            &build.index,
+            &build.artifacts,
+            &build.conversations,
+        )
+        .unwrap();
+
+        let targets = vec![
+            KnowledgeTarget {
+                target_type: "code".to_string(),
+                target_id: build.artifacts.code[0].base.id.clone(),
+                conversation_id: build.artifacts.code[0].base.conversation_id.clone(),
+                title: "Snippet".to_string(),
+            },
+            KnowledgeTarget {
+                target_type: "document".to_string(),
+                target_id: build.artifacts.documents[0].base.id.clone(),
+                conversation_id: build.artifacts.documents[0].base.conversation_id.clone(),
+                title: build.artifacts.documents[0].title.clone(),
+            },
+            KnowledgeTarget {
+                target_type: "asset".to_string(),
+                target_id: build.artifacts.assets[0].base.id.clone(),
+                conversation_id: build.artifacts.assets[0].base.conversation_id.clone(),
+                title: build.artifacts.assets[0].label.clone(),
+            },
+            KnowledgeTarget {
+                target_type: "conversation".to_string(),
+                target_id: build.conversations[0].summary.id.clone(),
+                conversation_id: build.conversations[0].summary.id.clone(),
+                title: build.conversations[0].summary.title.clone(),
+            },
+        ];
+
+        let dest_root = library.join("bundle-out");
+        fs::create_dir_all(&dest_root).unwrap();
+        let summary =
+            build_recovery_bundle(&library, &conn, "Logos-And-Theming", &targets, &dest_root)
+                .unwrap();
+        assert_eq!(summary.exported_count, 4);
+        assert_eq!(summary.skipped_count, 0);
+        assert!(Path::new(&summary.manifest_path).is_file());
+        assert!(Path::new(&summary.readme_path).is_file());
+        let readme_text = fs::read_to_string(&summary.readme_path).unwrap();
+        assert!(readme_text.contains("Logos-And-Theming"));
+        for item in &summary.items {
+            let rel = item.exported_relative_path.as_deref().unwrap();
+            assert!(Path::new(&summary.bundle_path).join(rel).is_file());
+        }
         let _ = fs::remove_dir_all(library);
     }
 }

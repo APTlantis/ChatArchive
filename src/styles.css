@@ -46,6 +46,7 @@ samp,
 .prism-code,
 [data-mono="true"] {
   font-family: var(--bs-font-mono) !important;
+  font-weight: 400;
 }
 
 :root {
@@ -329,7 +330,7 @@ select[aria-invalid="false"] {
 .brand-row h1 {
   margin: 0;
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 550;
   line-height: 1.2;
   letter-spacing: 0;
 }
@@ -343,6 +344,7 @@ select[aria-invalid="false"] {
 .references {
   color: var(--muted);
   font-size: 12px;
+  font-weight: 400;
   line-height: 1.35;
 }
 
@@ -370,7 +372,7 @@ select[aria-invalid="false"] {
 .toolbar-button {
   padding: 0 11px;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 550;
 }
 
 .icon-only:hover,
@@ -398,7 +400,7 @@ select[aria-invalid="false"] {
   color: var(--accent);
   cursor: pointer;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .sidebar-tools {
@@ -462,7 +464,7 @@ select[aria-invalid="false"] {
   color: var(--soft);
   cursor: pointer;
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 550;
   text-transform: capitalize;
 }
 
@@ -497,7 +499,7 @@ select[aria-invalid="false"] {
   gap: 4px;
   color: var(--muted);
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 400;
 }
 
 .range-grid input {
@@ -534,7 +536,7 @@ select[aria-invalid="false"] {
   background: var(--rail);
   color: var(--bs-mist-grey);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 550;
   line-height: 1;
   text-transform: uppercase;
 }
@@ -559,7 +561,7 @@ select[aria-invalid="false"] {
   overflow: hidden;
   color: var(--text);
   font-size: 14px;
-  font-weight: 610;
+  font-weight: 550;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -622,7 +624,7 @@ select[aria-invalid="false"] {
   margin: 0;
   color: var(--text);
   font-size: clamp(18px, 2vw, 23px);
-  font-weight: 760;
+  font-weight: 600;
   line-height: 1.18;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -671,7 +673,7 @@ select[aria-invalid="false"] {
   margin: 0 0 5px;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 400;
   text-transform: uppercase;
 }
 
@@ -679,6 +681,7 @@ select[aria-invalid="false"] {
   margin: 0;
   color: var(--text);
   font-size: clamp(24px, 4vw, 36px);
+  font-weight: 600;
   line-height: 1.1;
 }
 
@@ -730,6 +733,7 @@ select[aria-invalid="false"] {
   margin: 0 0 10px;
   color: var(--soft);
   font-size: 13px;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
@@ -770,7 +774,7 @@ select[aria-invalid="false"] {
   background: var(--surface-control);
   color: var(--soft);
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 550;
 }
 
 .explorer {
@@ -789,7 +793,7 @@ select[aria-invalid="false"] {
   margin: 0 0 5px;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 760;
+  font-weight: 400;
   text-transform: uppercase;
 }
 
@@ -797,6 +801,7 @@ select[aria-invalid="false"] {
   margin: 0;
   color: var(--text);
   font-size: clamp(24px, 4vw, 34px);
+  font-weight: 600;
   line-height: 1.1;
 }
 
@@ -811,7 +816,7 @@ select[aria-invalid="false"] {
 .explorer-toolbar span {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 400;
   white-space: nowrap;
 }
 
@@ -865,7 +870,7 @@ select[aria-invalid="false"] {
   margin: 8px 0 2px;
   color: var(--muted);
   font-size: 11px;
-  font-weight: 850;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
@@ -894,7 +899,7 @@ select[aria-invalid="false"] {
 .facet-row span {
   overflow: hidden;
   font-size: 12px;
-  font-weight: 730;
+  font-weight: 550;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -939,7 +944,7 @@ select[aria-invalid="false"] {
   overflow: hidden;
   color: var(--text);
   font-size: 13px;
-  font-weight: 740;
+  font-weight: 550;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -948,6 +953,7 @@ select[aria-invalid="false"] {
   overflow: hidden;
   color: var(--muted);
   font-size: 11px;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -959,6 +965,7 @@ select[aria-invalid="false"] {
   color: var(--soft);
   font-family: var(--bs-font-mono);
   font-size: 11px;
+  font-weight: 400;
   line-height: 1.42;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
@@ -998,13 +1005,14 @@ select[aria-invalid="false"] {
   background: var(--surface-selected);
   color: var(--accent-2);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .artifact-detail-head h3 {
   margin: 8px 0 5px;
   color: var(--text);
   font-size: 17px;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -1173,7 +1181,7 @@ select[aria-invalid="false"] {
 
 .asset-metadata dt {
   color: var(--muted);
-  font-weight: 750;
+  font-weight: 400;
 }
 
 .asset-metadata dd {
@@ -1204,7 +1212,7 @@ select[aria-invalid="false"] {
 .bookmark-row span {
   overflow: hidden;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 550;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1310,6 +1318,7 @@ select[aria-invalid="false"] {
 .markdown-block {
   color: var(--text);
   font-size: 15px;
+  font-weight: 400;
   line-height: 1.68;
 }
 
@@ -1327,7 +1336,7 @@ select[aria-invalid="false"] {
 .markdown-block h5 {
   margin: 20px 0 8px;
   color: var(--text);
-  font-weight: 760;
+  font-weight: 600;
   letter-spacing: 0;
 }
 
@@ -1356,6 +1365,7 @@ select[aria-invalid="false"] {
   color: var(--bs-arctic-cyan);
   font-family: var(--bs-font-mono);
   font-size: 0.9em;
+  font-weight: 400;
 }
 
 .code-card,
@@ -1384,7 +1394,7 @@ select[aria-invalid="false"] {
   gap: 8px;
   color: var(--soft);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 550;
 }
 
 pre {
@@ -1395,6 +1405,7 @@ pre {
   color: var(--soft);
   font-family: var(--bs-font-mono);
   font-size: 13px;
+  font-weight: 400;
   line-height: 1.55;
 }
 
@@ -1644,7 +1655,7 @@ pre::-webkit-scrollbar-thumb:hover {
 .right-rail h2 {
   margin: 0 6px 12px;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
   text-transform: uppercase;
   color: var(--bs-mist-grey);
 }
@@ -1711,6 +1722,7 @@ pre::-webkit-scrollbar-thumb:hover {
   margin: 0;
   color: var(--text);
   font-size: 24px;
+  font-weight: 600;
 }
 
 .boot-screen code {
@@ -1757,7 +1769,7 @@ pre::-webkit-scrollbar-thumb:hover {
   border-radius: 999px;
   color: var(--soft);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .setup-step strong {
@@ -1918,13 +1930,14 @@ pre::-webkit-scrollbar-thumb:hover {
 .knowledge-head span {
   color: var(--accent);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
 .knowledge-head h2 {
   margin: 5px 0 0;
   font-size: 20px;
+  font-weight: 600;
   line-height: 1.3;
 }
 
@@ -1941,6 +1954,7 @@ pre::-webkit-scrollbar-thumb:hover {
   gap: 7px;
   margin: 0 0 10px;
   font-size: 13px;
+  font-weight: 600;
 }
 
 .knowledge-options {
@@ -2131,6 +2145,7 @@ pre::-webkit-scrollbar-thumb:hover {
 .project-review h3 {
   margin: 4px 0 10px;
   font-size: 13px;
+  font-weight: 600;
 }
 
 .project-review h3:not(:first-child) {
@@ -2203,13 +2218,14 @@ pre::-webkit-scrollbar-thumb:hover {
 .project-dashboard-head > div:first-child > span {
   color: var(--accent);
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
 .project-dashboard-head h3 {
   margin: 0;
   font-size: 20px;
+  font-weight: 600;
 }
 
 .project-curation {
@@ -2551,7 +2567,7 @@ pre::-webkit-scrollbar-thumb:hover {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 13px;
   letter-spacing: 0.04em;
   color: var(--crystal-foreground);
@@ -2562,7 +2578,7 @@ pre::-webkit-scrollbar-thumb:hover {
   background: var(--crystal-primary);
   color: #fff;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
   padding: 2px 7px;
   border-radius: 12px;
   letter-spacing: normal;
@@ -2587,7 +2603,7 @@ pre::-webkit-scrollbar-thumb:hover {
 
 .typography-switcher-label {
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 400;
   color: var(--crystal-muted);
   text-transform: uppercase;
   padding: 0 6px;
@@ -2596,7 +2612,7 @@ pre::-webkit-scrollbar-thumb:hover {
 
 .typography-btn {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 550;
   padding: 3px 8px;
   border-radius: 4px;
   background: transparent;
@@ -2655,7 +2671,7 @@ pre::-webkit-scrollbar-thumb:hover {
 
 .matrix-column-title {
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--crystal-muted);
@@ -2948,7 +2964,7 @@ pre::-webkit-scrollbar-thumb:hover {
 
 .matrix-action-label {
   font-size: 10px;
-  font-weight: 750;
+  font-weight: 400;
   letter-spacing: 0.05em;
   color: var(--crystal-muted);
   text-transform: uppercase;
@@ -2992,7 +3008,7 @@ pre::-webkit-scrollbar-thumb:hover {
   width: 100%;
   padding: 10px 14px;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
   border-radius: 6px;
   background: var(--crystal-primary-rest-bg, #37005b);
@@ -3065,3 +3081,18 @@ pre::-webkit-scrollbar-thumb:hover {
   align-items: center;
   gap: 8px;
 }
+
+/* Source-anchor highlight pulse when jumping from an explorer or search */
+.message.message-highlighted .message-body {
+  border-color: var(--crystal-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--crystal-primary) 50%, transparent),
+              0 0 24px color-mix(in srgb, var(--crystal-primary) 22%, transparent);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.code-card.artifact-highlighted,
+.asset.artifact-highlighted {
+  border-color: var(--crystal-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--crystal-primary) 55%, transparent);
+}
+

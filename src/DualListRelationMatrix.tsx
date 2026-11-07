@@ -18,6 +18,7 @@ import {
   Type,
   Trash2,
   Link2,
+  Download,
 } from 'lucide-react';
 import type {
   KnowledgeState,
@@ -75,6 +76,9 @@ export interface DualListRelationMatrixProps {
   onSelectTargets: (targets: KnowledgeTarget[] | ((prev: KnowledgeTarget[]) => KnowledgeTarget[])) => void;
   onClearSelection: () => void;
   onOpenTarget?: (target: KnowledgeTarget) => void;
+  onOpenTargetSource?: (target: KnowledgeTarget) => void;
+  onOrganizeTarget?: (target: KnowledgeTarget) => void;
+  onExportBundle?: (bundleName: string, targets: KnowledgeTarget[], chooseDirectory?: boolean) => void;
   artifacts?: ArtifactIndex | null;
   index?: ArchiveIndex | null;
   activeTypography: TypographyOption;
@@ -90,8 +94,9 @@ export default function DualListRelationMatrix({
   onSelectTargets,
   onClearSelection,
   onOpenTarget,
-  artifacts,
-  index,
+  onOpenTargetSource,
+  onOrganizeTarget,
+  onExportBundle,
   activeTypography,
   onChangeTypography,
   viewMode = 'docked',
@@ -116,125 +121,15 @@ export default function DualListRelationMatrix({
   const [newTargetCollectionName, setNewTargetCollectionName] = useState('');
   const [txToast, setTxToast] = useState<{ message: string; timestamp: number } | null>(null);
 
-  // Initialize seed collections if empty
+  // Keep selectedCollectionId synchronized with real collections without auto-seeding fake data into SQLite
   useEffect(() => {
-    if (knowledgeState.collections.length === 0) {
-      const now = Date.now();
-      const initialColls: KnowledgeCollection[] = SEED_COLLECTIONS.map((c) => ({
-        id: c.id,
-        name: c.name,
-        createdAt: now,
-      }));
-
-      // Seed items matching the design specifications
-      const seedPointers: KnowledgeCollectionItem[] = [
-        {
-          collectionId: 1,
-          targetType: 'asset',
-          targetId: 'asset_img_xZWxJr',
-          conversationId: 'conv_1',
-          title: 'img_xZWxJr.png',
-          createdAt: now,
-        },
-        {
-          collectionId: 1,
-          targetType: 'document',
-          targetId: 'doc_feedback_md',
-          conversationId: 'conv_1',
-          title: 'feedback.md',
-          createdAt: now,
-        },
-        {
-          collectionId: 1,
-          targetType: 'code',
-          targetId: 'code_theme_override',
-          conversationId: 'conv_2',
-          title: 'theme-override.css',
-          createdAt: now,
-        },
-        {
-          collectionId: 1,
-          targetType: 'conversation',
-          targetId: 'msg_layout_pad',
-          conversationId: 'conv_3',
-          title: 'MSG: "Fix the layout padding..."',
-          createdAt: now,
-        },
-        {
-          collectionId: 1,
-          targetType: 'asset',
-          targetId: 'asset_logo_old_v1',
-          conversationId: 'conv_1',
-          title: 'logo_old_v1.png',
-          createdAt: now,
-        },
-        {
-          collectionId: 1,
-          targetType: 'document',
-          targetId: 'doc_success_crit',
-          conversationId: 'conv_2',
-          title: 'success-criteria.md',
-          createdAt: now,
-        },
-        {
-          collectionId: 1,
-          targetType: 'code',
-          targetId: 'code_api_connector',
-          conversationId: 'conv_3',
-          title: 'api-connector.py',
-          createdAt: now,
-        },
-        // Also link img_xZWxJr to multiple other collections to showcase "Linked in N colls"
-        {
-          collectionId: 2,
-          targetType: 'asset',
-          targetId: 'asset_img_xZWxJr',
-          conversationId: 'conv_1',
-          title: 'img_xZWxJr.png',
-          createdAt: now,
-        },
-        {
-          collectionId: 3,
-          targetType: 'asset',
-          targetId: 'asset_img_xZWxJr',
-          conversationId: 'conv_1',
-          title: 'img_xZWxJr.png',
-          createdAt: now,
-        },
-        {
-          collectionId: 4,
-          targetType: 'asset',
-          targetId: 'asset_img_xZWxJr',
-          conversationId: 'conv_1',
-          title: 'img_xZWxJr.png',
-          createdAt: now,
-        },
-        {
-          collectionId: 5,
-          targetType: 'asset',
-          targetId: 'asset_img_xZWxJr',
-          conversationId: 'conv_1',
-          title: 'img_xZWxJr.png',
-          createdAt: now,
-        },
-        {
-          collectionId: 6,
-          targetType: 'asset',
-          targetId: 'asset_img_xZWxJr',
-          conversationId: 'conv_1',
-          title: 'img_xZWxJr.png',
-          createdAt: now,
-        },
-      ];
-
-      onApplyKnowledgeState({
-        ...knowledgeState,
-        collections: initialColls,
-        collectionItems: seedPointers,
-      });
-      setSelectedCollectionId(1);
+    if (
+      knowledgeState.collections.length > 0 &&
+      !knowledgeState.collections.some((c) => c.id === selectedCollectionId)
+    ) {
+      setSelectedCollectionId(knowledgeState.collections[0].id);
     }
-  }, [knowledgeState.collections.length]);
+  }, [knowledgeState.collections, selectedCollectionId]);
 
   // Ensure active collection is valid
   const collections = knowledgeState.collections;
@@ -279,6 +174,9 @@ export default function DualListRelationMatrix({
     return knowledgeState.collectionItems.filter((item) => item.collectionId === activeCollection.id);
   }, [knowledgeState.collectionItems, activeCollection]);
 
+  const displayPointerTitle = (item: KnowledgeTarget) =>
+    knowledgeState.customTitles?.[targetKey(item)]?.trim() || item.title;
+
   // Filtered pointers inside selected collection
   const filteredPointers = useMemo(() => {
     let result = itemsInActiveCollection;
@@ -287,10 +185,13 @@ export default function DualListRelationMatrix({
     }
     const needle = pointerSearch.trim().toLowerCase();
     if (needle) {
-      result = result.filter((item) => item.title.toLowerCase().includes(needle));
+      result = result.filter((item) => {
+        const resolved = knowledgeState.customTitles?.[targetKey(item)]?.trim() || item.title;
+        return `${resolved}\n${item.title}`.toLowerCase().includes(needle);
+      });
     }
     return result;
-  }, [itemsInActiveCollection, activeTypeFilter, pointerSearch]);
+  }, [itemsInActiveCollection, activeTypeFilter, pointerSearch, knowledgeState.customTitles]);
 
   // Close popover when clicking outside
   const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -435,53 +336,28 @@ export default function DualListRelationMatrix({
     setTimeout(() => setTxToast(null), 5000);
   }
 
-  // Quick helper to sample items into Column 3 for testing
-  function sampleLibrarySelection(type: KnowledgeTargetType) {
-    const sampled: KnowledgeTarget[] = [];
-    if (type === 'code' && artifacts?.code) {
-      artifacts.code.slice(0, 5).forEach((snippet) => {
-        sampled.push({
-          targetType: 'code',
-          targetId: snippet.id,
-          conversationId: snippet.conversationId,
-          title: `${snippet.language || 'code'}: ${snippet.text.slice(0, 36).replace(/\n/g, ' ')}...`,
-        });
-      });
-    } else if (type === 'asset' && artifacts?.assets) {
-      artifacts.assets.slice(0, 5).forEach((asset) => {
-        sampled.push({
-          targetType: 'asset',
-          targetId: asset.id,
-          conversationId: asset.conversationId,
-          title: asset.label || 'Asset',
-        });
-      });
-    } else if (type === 'document' && artifacts?.documents) {
-      artifacts.documents.slice(0, 5).forEach((doc) => {
-        sampled.push({
-          targetType: 'document',
-          targetId: doc.id,
-          conversationId: doc.conversationId,
-          title: doc.title,
-        });
-      });
-    } else if (index?.conversations) {
-      index.conversations.slice(0, 5).forEach((conv) => {
-        sampled.push({
-          targetType: 'conversation',
-          targetId: conv.id,
-          conversationId: conv.id,
-          title: `MSG: "${conv.title}"`,
-        });
-      });
+  // Quick helper to select or create the 'Inbox / Review Later' collection
+  function selectOrCreateInboxCollection() {
+    const existing = collections.find(
+      (c) => c.name.toLowerCase() === 'inbox / review later' || c.name.toLowerCase() === 'review later',
+    );
+    if (existing) {
+      setSelectedCollectionId(existing.id);
+      setIngestionAction('selected');
+      return;
     }
-    if (sampled.length) {
-      onSelectTargets((prev) => {
-        const existing = new Set(prev.map(targetKey));
-        const additions = sampled.filter((s) => !existing.has(targetKey(s)));
-        return [...prev, ...additions];
-      });
-    }
+    const nextId = Math.max(0, ...collections.map((c) => c.id)) + 1;
+    const inbox: KnowledgeCollection = {
+      id: nextId,
+      name: 'Inbox / Review Later',
+      createdAt: Date.now(),
+    };
+    onApplyKnowledgeState({
+      ...knowledgeState,
+      collections: [inbox, ...collections],
+    });
+    setSelectedCollectionId(nextId);
+    setIngestionAction('selected');
   }
 
   const isIngestionActive = selectedTargets.length > 0;
@@ -771,8 +647,22 @@ export default function DualListRelationMatrix({
                   <span>📁</span>
                   <strong>{activeCollection?.name || 'No Collection Selected'}</strong>
                 </span>
-                <span style={{ fontSize: 11, color: 'var(--crystal-muted)' }}>
-                  <strong>{itemsInActiveCollection.length}</strong> pointers
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--crystal-muted)' }}>
+                  <span>
+                    <strong>{itemsInActiveCollection.length}</strong> pointers
+                  </span>
+                  {onExportBundle && activeCollection && itemsInActiveCollection.length > 0 ? (
+                    <button
+                      type="button"
+                      className="toolbar-button"
+                      onClick={() => onExportBundle(activeCollection.name, itemsInActiveCollection, true)}
+                      title={`Export "${activeCollection.name}" (${itemsInActiveCollection.length} items) as a portable recovery bundle`}
+                      style={{ padding: '1px 7px', fontSize: 10, minHeight: 22 }}
+                    >
+                      <Download size={11} />
+                      Export Bundle
+                    </button>
+                  ) : null}
                 </span>
               </div>
 
@@ -799,7 +689,7 @@ export default function DualListRelationMatrix({
 
                 {/* Filter chips */}
                 <div style={{ display: 'flex', gap: 2 }}>
-                  {['all', 'asset', 'document', 'code', 'conversation'].map((type) => (
+                  {['all', 'asset', 'document', 'code', 'link', 'conversation'].map((type) => (
                     <button
                       key={type}
                       type="button"
@@ -821,6 +711,8 @@ export default function DualListRelationMatrix({
                         ? '📄'
                         : type === 'code'
                         ? '💻'
+                        : type === 'link'
+                        ? '🔗'
                         : '💬'}
                     </button>
                   ))}
@@ -836,6 +728,7 @@ export default function DualListRelationMatrix({
             >
               {filteredPointers.map((pointer) => {
                 const key = targetKey(pointer);
+                const resolvedTitle = displayPointerTitle(pointer);
                 const sharingColls = itemToCollectionsMap.get(key) || new Set<number>();
                 const linkedCount = sharingColls.size;
                 const isPopoverOpen = activePopoverItemId === key;
@@ -846,16 +739,46 @@ export default function DualListRelationMatrix({
                     className="matrix-pointer-row"
                     data-item-id={pointer.targetId}
                     data-target-type={pointer.targetType}
-                    onClick={() => onOpenTarget?.(pointer)}
+                    onClick={() => onOpenTarget?.({ ...pointer, title: resolvedTitle })}
                     role="listitem"
                   >
                     {/* Short prefix indicator */}
                     <span className="matrix-type-icon">{getTargetPrefix(pointer.targetType)}</span>
 
                     {/* Truncated filename or text snippet */}
-                    <span className="matrix-pointer-title" title={pointer.title}>
-                      {pointer.title}
+                    <span className="matrix-pointer-title" title={resolvedTitle}>
+                      {resolvedTitle}
                     </span>
+
+                    {/* Rename / Organize item */}
+                    {onOrganizeTarget ? (
+                      <button
+                        type="button"
+                        className="matrix-link-indicator"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOrganizeTarget({ ...pointer, title: resolvedTitle });
+                        }}
+                        title="Rename or tag this item"
+                      >
+                        Rename
+                      </button>
+                    ) : null}
+
+                    {/* Direct jump to source conversation message */}
+                    {onOpenTargetSource ? (
+                      <button
+                        type="button"
+                        className="matrix-link-indicator"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenTargetSource({ ...pointer, title: resolvedTitle });
+                        }}
+                        title="Jump to source conversation and message"
+                      >
+                        <ArrowUpRight size={10} style={{ display: 'inline', verticalAlign: 'middle' }} /> Source
+                      </button>
+                    ) : null}
 
                     {/* Instant Many-to-Many Context: [→ Linked in N colls] */}
                     <button
@@ -955,14 +878,28 @@ export default function DualListRelationMatrix({
                   <span>COL 3: BATCH CHECKBOX INGESTION</span>
                 </span>
                 {selectedTargets.length > 0 ? (
-                  <button
-                    type="button"
-                    className="toolbar-button"
-                    onClick={onClearSelection}
-                    style={{ padding: '2px 6px', fontSize: 10, height: 22 }}
-                  >
-                    Clear queue
-                  </button>
+                  <span style={{ display: 'inline-flex', gap: 5 }}>
+                    {onExportBundle ? (
+                      <button
+                        type="button"
+                        className="toolbar-button"
+                        onClick={() => onExportBundle('Selected-Batch', selectedTargets, true)}
+                        title="Export selected queue as a portable recovery bundle"
+                        style={{ padding: '2px 6px', fontSize: 10, minHeight: 22 }}
+                      >
+                        <Download size={11} />
+                        Export Queue
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="toolbar-button"
+                      onClick={onClearSelection}
+                      style={{ padding: '2px 6px', fontSize: 10, minHeight: 22 }}
+                    >
+                      Clear queue
+                    </button>
+                  </span>
                 ) : null}
               </div>
 
@@ -985,7 +922,7 @@ export default function DualListRelationMatrix({
                     <div key={targetKey(item)} className="matrix-queue-item" role="listitem">
                       <span>{getTargetPrefix(item.targetType)}</span>
                       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {item.title}
+                        {displayPointerTitle(item)}
                       </span>
                       <button
                         type="button"
@@ -1014,39 +951,18 @@ export default function DualListRelationMatrix({
                     gap: 6,
                   }}
                 >
-                  <span>Select items via checkboxes in the top Library / Explorers, or test with quick samples:</span>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  <span>
+                    Check any code snippet, document, image, link, or filtered conversation search result above to stage items here.
+                  </span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                     <button
                       type="button"
-                      className="filter-chip"
-                      onClick={() => sampleLibrarySelection('code')}
-                      style={{ fontSize: 10, padding: '2px 6px' }}
+                      className="filter-chip active"
+                      onClick={selectOrCreateInboxCollection}
+                      style={{ fontSize: 10, padding: '2px 8px' }}
+                      title="Select or create a zero-friction Inbox / Review Later collection"
                     >
-                      + 5 Code Snippets
-                    </button>
-                    <button
-                      type="button"
-                      className="filter-chip"
-                      onClick={() => sampleLibrarySelection('asset')}
-                      style={{ fontSize: 10, padding: '2px 6px' }}
-                    >
-                      + 5 Assets
-                    </button>
-                    <button
-                      type="button"
-                      className="filter-chip"
-                      onClick={() => sampleLibrarySelection('document')}
-                      style={{ fontSize: 10, padding: '2px 6px' }}
-                    >
-                      + 5 Documents
-                    </button>
-                    <button
-                      type="button"
-                      className="filter-chip"
-                      onClick={() => sampleLibrarySelection('conversation')}
-                      style={{ fontSize: 10, padding: '2px 6px' }}
-                    >
-                      + 5 Conversations
+                      📥 Target &quot;Inbox / Review Later&quot;
                     </button>
                   </div>
                 </div>

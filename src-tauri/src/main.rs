@@ -21,6 +21,7 @@ fn main() {
             commands::list_document_artifacts,
             commands::get_document_artifact_content,
             commands::list_asset_artifacts,
+            commands::list_link_artifacts,
             commands::export_document_markdown,
             commands::export_code_snippet,
             commands::search_conversations,
@@ -38,6 +39,7 @@ fn main() {
             commands::save_message_bookmark,
             commands::save_scroll_position,
             commands::export_conversation_markdown,
+            commands::export_recovery_bundle,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run ChatArchive");
